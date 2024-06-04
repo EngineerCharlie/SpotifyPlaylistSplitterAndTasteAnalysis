@@ -40,12 +40,29 @@ def get_user_playlists(sp, user_id):
     return playlists
 
 
+# Function to get all tracks in a playlist
+def get_playlist_tracks(sp, playlists):
+    playlist_tracks = {}
+    for playlist in playlists:
+        tracks = []
+        results = sp.playlist_tracks(playlist["id"])
+        tracks.extend([item["track"]["name"] for item in results["items"]])
+        while results["next"]:
+            results = sp.next(results)
+            tracks.extend([item["track"]["name"] for item in results["items"]])
+        print(results["items"][0]["track"])
+        playlist_tracks[playlist["name"]] = tracks
+    return playlist_tracks
+
+
 # Fetch the playlists
 user_playlists = get_user_playlists(sp, SpotifySecrets.SPOTIFY_USERNAME)
-
-# Display playlist details
-for playlist in user_playlists:
-    print(f"Name: {playlist['name']}")
-    print(f"ID: {playlist['id']}")
-    print(f"Tracks: {playlist['tracks']['total']}")
+# Fetch tracks for each playlist
+playlist_tracks = get_playlist_tracks(sp, user_playlists)
+exit()
+# Display the tracks in each playlist
+for playlist_name, tracks in playlist_tracks.items():
+    print(f"Playlist: {playlist_name}")
+    for track in tracks:
+        print(f" - {track}")
     print("-" * 40)
