@@ -1,3 +1,4 @@
+import csv
 import spotipy
 import SpotifySecrets  # Rename SpotifySecretsGeneric.py to SpotifySecrets.py, and add your secret info
 from spotipy.oauth2 import SpotifyOAuth
@@ -46,11 +47,20 @@ def get_playlist_tracks(sp, playlists):
     for playlist in playlists:
         tracks = []
         results = sp.playlist_tracks(playlist["id"])
-        tracks.extend([item["track"]["name"] for item in results["items"]])
+        tracks.extend(
+            [
+                f"{item['track']['artists'][0]['name']} - {item['track']['name']}"
+                for item in results["items"]
+            ]
+        )
         while results["next"]:
             results = sp.next(results)
-            tracks.extend([item["track"]["name"] for item in results["items"]])
-        print(results["items"][0]["track"])
+            tracks.extend(
+                [
+                    f"{item['track']['artists'][0]['name']} - {item['track']['name']}"
+                    for item in results["items"]
+                ]
+            )
         playlist_tracks[playlist["name"]] = tracks
     return playlist_tracks
 
@@ -59,6 +69,20 @@ def get_playlist_tracks(sp, playlists):
 user_playlists = get_user_playlists(sp, SpotifySecrets.SPOTIFY_USERNAME)
 # Fetch tracks for each playlist
 playlist_tracks = get_playlist_tracks(sp, user_playlists)
+# Prepare data for CSV
+csv_data = []
+for playlist_name, tracks in playlist_tracks.items():
+    for track in tracks:
+        csv_data.append(["Charlie", f"{playlist_name} Charlie", track])
+
+# Export to CSV
+csv_file = "Charlies_playlists.csv"
+with open(csv_file, mode="w", newline="", encoding="utf-8") as file:
+    writer = csv.writer(file)
+    writer.writerow(["user_id", "playlist_name", "song"])  # Write header
+    writer.writerows(csv_data)  # Write data
+
+print(f"Data has been exported to {csv_file}")
 exit()
 # Display the tracks in each playlist
 for playlist_name, tracks in playlist_tracks.items():

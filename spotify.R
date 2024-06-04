@@ -3,7 +3,7 @@ library(igraph)
 library(readr)
 library(dplyr)
 library(tidyr)
-setwd("C:/Users/Charl/Dropbox/Sapienza/Year 2/Data management and analysis 2/proj/spotify")
+setwd("C:/Users/Charl/Programming/SpotifyPlaylistSplitter")
 #playlist <- read_delim("spotify_playlist.csv", delim = ",",escape_double = TRUE)
 get_playlist_data <- function(n) {
   # Read the data
@@ -20,10 +20,16 @@ get_playlist_data <- function(n) {
   
   return(playlist)
 }
+get_charlies_playlists <- function() {
+  # Read the data
+  playlist <- read_delim("Charlies_playlists.csv", delim = ",", escape_double = TRUE)
+  return(playlist)
+}
 get_song_user_matrix <- function(
     rows_to_scrape, 
     min_song_occurences,
-    song_list = c()
+    song_list = c(),
+    include_charlie = FALSE
     ){
   playlist <- get_playlist_data(rows_to_scrape) %>%
     mutate(song = paste(artist_name, track_name, sep = " - ")) %>%
@@ -33,6 +39,12 @@ get_song_user_matrix <- function(
   if (length(song_list)>=1){
     playlist <- playlist %>%
       filter(song %in% song_list)
+  }
+  if (include_charlie){
+    playlist <- rbind(playlist, get_charlies_playlists() %>%
+      select(user_id,song) %>%
+      unique()
+    )
   }
   playlist <- playlist %>%
     group_by(song) %>%
@@ -55,7 +67,8 @@ get_song_playlist_matrix <- function(
     min_playlist_length=1, 
     max_playlist_length=1000, 
     min_song_occurences=1,
-    song_list = c())
+    song_list = c(),
+    include_charlie = FALSE)
   {
   playlist <- get_playlist_data(rows_to_scrape) %>%
     mutate(song = paste(artist_name, track_name, sep = " - ")) %>%
@@ -66,6 +79,12 @@ get_song_playlist_matrix <- function(
   if (length(song_list)>=1){
     playlist <- playlist %>%
       filter(song %in% song_list)
+  }
+  if (include_charlie){
+    playlist <- rbind(playlist, get_charlies_playlists() %>%
+                        select(playlist_name,song) %>%
+                        unique()
+    )
   }
   playlist <- playlist %>%
     group_by(song) %>%
