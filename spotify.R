@@ -122,7 +122,12 @@ song_matrix <- readRDS("user_song_adj_minsong2.rds")
 #adjacency matrix of how songs link users
 adjacency_matrix <- t(song_matrix) %*% song_matrix  #user-user sparse adjacency matrix
 #adjacency_matrix <- as.matrix(adjacency_matrix)
+diag(adjacency_matrix) <- 0
+small_matrix_size <- 1000
+row_index <- max(match("Charlie", rownames(adjacency_matrix)),small_matrix_size+1)
 
+adjacency_matrix <- adjacency_matrix[c(1:small_matrix_size, row_index), c(1:small_matrix_size, row_index)]
+adjacency_matrix <- as.matrix(adjacency_matrix)
 g <- graph_from_adjacency_matrix(adjacency_matrix,mode = c("undirected"), weighted=TRUE,diag=FALSE)
 
 # Plot the graph
@@ -141,7 +146,7 @@ plot(g,
      vertex.color=adjustcolor("darkgreen",alpha.f=1),
      vertex.frame.color=adjustcolor("white",alpha.f=0),
      edge.width = 0.5,# (E(g)$weight**0.5)/5,
-     edge.color = adjustcolor("darkblue", alpha.f = 0.02),#edge_colors,
+     edge.color = adjustcolor("darkblue", alpha.f = 0.1),#edge_colors,
      edge.curved=0,
      #display.isolates=FALSE, # Hides unlinked nodes, but doesn't work
      rescale=T,

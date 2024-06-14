@@ -8,6 +8,21 @@ row_stats <- function(row) {
   sd_val <- sd(row)
   return(c(mean_val, median_val, sd_val))
 }
+# Function to compute percentile
+compute_percentile_ratio <- function(value) {
+  percentile <- sum(user_song_popularity$Ratio <= value['Ratio']) / length(user_song_popularity$Ratio) * 100
+  return(percentile)
+}
+# Function to compute percentile
+compute_percentile_interesting <- function(value) {
+  percentile <- sum(user_song_popularity$interest_cons <= value['interest_cons']) / length(user_song_popularity$interest_cons) * 100
+  return(percentile)
+}
+# Function to compute percentile
+compute_percentile_combined <- function(value) {
+  percentile <- sum(user_song_popularity$'Combined Score' <= value['Combined Score']) / length(user_song_popularity$'Combined Score') * 100
+  return(percentile)
+}
 
 
 song_matrix <- readRDS("user_song_adj_minsong2.rds")
@@ -60,6 +75,9 @@ dens_df <- data.frame(x = dens$x, y = dens$y)
 my_position <- user_song_popularity["Charlie",]$Ratio
 percentile <- sum(user_song_popularity$Ratio <= my_position) / length(user_song_popularity$Ratio) * 100
 percentile <- sprintf("%.1f", percentile)
+percentiles <- apply(user_song_popularity, 1, compute_percentile_ratio)
+user_song_popularity$'Ratio Percentile' <- percentiles
+
 
 ggplot(dens_df, aes(x, y)) +
   geom_line(color = "blue", size = 1.5) +
@@ -77,12 +95,14 @@ ggplot(dens_df, aes(x, y)) +
 dens <- density(user_song_popularity$interest_cons)
 dens_df <- data.frame(x = dens$x, y = dens$y)
 my_position <- user_song_popularity["Charlie",]$interest_cons
-percentile <- sum(user_song_popularity$interest_cons <= 20) / length(user_song_popularity$interest_cons) * 100
+percentile <- sum(user_song_popularity$interest_cons <= my_position) / length(user_song_popularity$interest_cons) * 100
 percentile <- sprintf("%.1f", percentile)
+percentiles <- apply(user_song_popularity, 1, compute_percentile_interesting)
+user_song_popularity$'Interesting Percentile' <- percentiles
 
 ggplot(dens_df, aes(x, y)) +
   geom_line(color = "blue", size = 1.5) +
-  labs(title = "PDF of unusual user links",
+  labs(title = "PDF of links  to unusual users",
        x = "Links to users with unusual tastes", y = "Density") +
   theme_minimal() +
   geom_vline(xintercept = user_song_popularity["Charlie",]$interest_cons, color = "red", size = 1) +  # Add vertical red line
@@ -91,3 +111,27 @@ ggplot(dens_df, aes(x, y)) +
            color = "red", vjust = 10, hjust = -0.05) +  # Add text label
   theme(plot.title = element_text(hjust = 0.5))
 
+user_song_popularity$'Combined Score' <- (user_song_popularity$'Interesting Percentile'/100)*(user_song_popularity$'Ratio Percentile'/100)
+percentiles <- apply(user_song_popularity, 1, compute_percentile_combined)
+user_song_popularity$'Comb score Percentile' <- percentiles
+user_song_popularity['Charlie',]
+
+
+####### Plot interesting user connections
+# Compute density estimate
+dens <- density(user_song_popularity$'Combined Score')
+dens_df <- data.frame(x = dens$x, y = dens$y)
+my_position <- user_song_popularity["Charlie",]$'Combined Score'
+percentile <- sum(user_song_popularity$'Combined Score' <= my_position) / length(user_song_popularity$'Combined Score') * 100
+percentile <- sprintf("%.1f", percentile)
+
+ggplot(dens_df, aes(x, y)) +
+  geom_line(color = "blue", size = 1.5) +
+  labs(title = "PDF of combined music taste score",
+       x = "Links to users with unusual tastes", y = "Density") +
+  theme_minimal() +
+  geom_vline(xintercept = user_song_popularity["Charlie",]$'Combined Score', color = "red", size = 1) +  # Add vertical red line
+  annotate("text", x = user_song_popularity["Charlie",]$'Combined Score', y = max(dens_df$y), 
+           label = paste("Me @ Percentile: ", percentile, "%"),
+           color = "red", vjust = 10, hjust = -0.05) +  # Add text label
+  theme(plot.title = element_text(hjust = 0.5))
