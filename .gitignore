@@ -167,3 +167,6 @@ Charlies_playlists.csv
 spotify_playlist.csv
 spotify_playlists_medium.csv
 spotify_song_info.csv
+spotify_playlists.csv
+user_song_adj_minsong2.rds
+user_song_minsong2.csv

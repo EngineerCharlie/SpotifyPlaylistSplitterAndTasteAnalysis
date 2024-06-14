@@ -3,14 +3,17 @@ library(igraph)
 library(readr)
 library(dplyr)
 library(tidyr)
+library(Matrix)
 setwd("C:/Users/Charl/Programming/SpotifyPlaylistSplitter")
 #playlist <- read_delim("spotify_playlist.csv", delim = ",",escape_double = TRUE)
-get_playlist_data <- function(n) {
+get_playlist_data <- function(n=-1) {
   # Read the data
-  playlist <- read_delim("spotify_playlists_medium.csv", delim = ",", escape_double = TRUE)
+  playlist <- read_delim("spotify_playlists.csv", delim = ",", escape_double = TRUE)
   
   # Select the first n rows
-  playlist <- playlist[1:n,]
+  if (n > 0){
+    playlist <- playlist[1:n,]
+  }
   
   #################  DATA CLEANING ####################
   # Fix the column names
@@ -26,11 +29,11 @@ get_charlies_playlists <- function() {
   return(playlist)
 }
 get_song_user_matrix <- function(
-    rows_to_scrape, 
+    rows_to_scrape=-1, 
     min_song_occurences,
     song_list = c(),
     include_charlie = FALSE
-    ){
+){
   playlist <- get_playlist_data(rows_to_scrape) %>%
     mutate(song = paste(artist_name, track_name, sep = " - ")) %>%
     select(user_id,song) %>%
@@ -42,8 +45,8 @@ get_song_user_matrix <- function(
   }
   if (include_charlie){
     playlist <- rbind(playlist, get_charlies_playlists() %>%
-      select(user_id,song) %>%
-      unique()
+                        select(user_id,song) %>%
+                        unique()
     )
   }
   playlist <- playlist %>%
@@ -63,19 +66,19 @@ get_song_user_matrix <- function(
   return(playlist)
 }
 get_song_playlist_matrix <- function(
-    rows_to_scrape,
+    rows_to_scrape=-1,
     min_playlist_length=1, 
     max_playlist_length=1000, 
     min_song_occurences=1,
     song_list = c(),
     include_charlie = FALSE)
-  {
+{
   playlist <- get_playlist_data(rows_to_scrape) %>%
     mutate(song = paste(artist_name, track_name, sep = " - ")) %>%
     mutate(playlist_name = paste(playlist_name, substr(user_id, 1, 4), sep = " -")) %>%
     select(playlist_name,song) %>%
     unique()
-    #Removes irrelevant songs if present
+  #Removes irrelevant songs if present
   if (length(song_list)>=1){
     playlist <- playlist %>%
       filter(song %in% song_list)
@@ -117,23 +120,69 @@ row_stats <- function(row) {
 ######## #################### #################### #################### #################### ############
 
 ######## Gets a matrix of songs and the user that has playlisted them
-song_matrix <- get_song_user_matrix(
-  rows_to_scrape = 1000000,
-  min_song_occurences = 2
-  )
+#song_matrix <- get_song_user_matrix(
+#  rows_to_scrape = -1,
+#  min_song_occurences = 2
+#  )
+#song_matrix <- Matrix(song_matrix, sparse = TRUE)
+song_matrix <- readRDS("user_song_adj_minsong2.rds")
 #adjacency matrix of how songs link users
-adjacency_matrix <- song_matrix %*% t(song_matrix)
+adjacency_matrix <- t(song_matrix) %*% song_matrix  #user-user sparse adjacency matrix
+#adjacency_matrix <- as.matrix(adjacency_matrix)
+
 total_user_songs <- diag(adjacency_matrix)
 diag(adjacency_matrix) <- 0
+
+######## Calculates some statistics about user-user adjacency
 common_songs <- rowSums(adjacency_matrix)
 song_choice_stats <- t(apply(adjacency_matrix, 1, row_stats))
 song_choice_ratio <- common_songs / total_user_songs
 user_song_popularity <- cbind(total_user_songs, common_songs, song_choice_ratio, song_choice_stats)
 colnames(user_song_popularity) <- c("Total songs", "Common songs", "Ratio", "Mean", "Median", "SD")
 rownames(user_song_popularity) <- rownames(adjacency_matrix)
+user_song_popularity <- as.data.frame(user_song_popularity)
+
+
+####### Plot Average songs in common
+# Compute density estimate
+dens <- density(user_song_popularity$Mean)
+dens_df <- data.frame(x = dens$x, y = dens$y)
+my_position <- user_song_popularity["Charlie",]$Mean
+percentile <- sum(user_song_popularity$Mean <= my_position) / length(user_song_popularity$Mean) * 100
+percentile <- sprintf("%.1f", percentile)
+
+ggplot(dens_df, aes(x, y)) +
+  geom_line(color = "blue") +
+  labs(title = "PDF of  Average Number of Songs in Common",
+       x = "Average songs in common", y = "Density") +
+  theme_minimal() +
+  geom_vline(xintercept = user_song_popularity["Charlie",]$Mean, color = "red") +  # Add vertical red line
+  annotate("text", x = user_song_popularity["Charlie",]$Mean, y = max(dens_df$y), 
+           label = paste("                                        Me @ Percentile: ", percentile, ""),
+           color = "red", vjust = 10, hjust = 0.5) +  # Add text label
+  theme(plot.title = element_text(hjust = 0.5))
+
+####### Plot Ratio songs in common
+# Compute density estimate
+dens <- density(user_song_popularity$Ratio)
+dens_df <- data.frame(x = dens$x, y = dens$y)
+my_position <- user_song_popularity["Charlie",]$Ratio
+percentile <- sum(user_song_popularity$Ratio <= my_position) / length(user_song_popularity$Ratio) * 100
+percentile <- sprintf("%.1f", percentile)
+
+ggplot(dens_df, aes(x, y)) +
+  geom_line(color = "blue", size = 2) +
+  labs(title = "PDF of  Ratio of Songs in Common",
+       x = "Average (songs in common)/(total songs in playlists)", y = "Density") +
+  theme_minimal() +
+  geom_vline(xintercept = user_song_popularity["Charlie",]$Ratio, color = "red", size = 1) +  # Add vertical red line
+  annotate("text", x = user_song_popularity["Charlie",]$Ratio, y = max(dens_df$y), 
+           label = paste("                                        Me @ Percentile: ", percentile, ""),
+           color = "red", vjust = 10, hjust = 0.5) +  # Add text label
+  theme(plot.title = element_text(hjust = 0.5))
+
 
 g <- graph_from_adjacency_matrix(adjacency_matrix,mode = c("undirected"), weighted=TRUE,diag=FALSE)
-
 
 # Plot the graph
 #l <- layout_with_fr(g)
@@ -156,7 +205,7 @@ plot(g,
      #display.isolates=FALSE, # Hides unlinked nodes, but doesn't work
      rescale=T,
      layout=l,
-     )
+)
 
 
 ####### Create weighted graph of song adjacencies
@@ -204,7 +253,7 @@ song_matrix = get_song_playlist_matrix(
   min_playlist_length = 5, 
   max_playlist_length = 9999,
   min_song_occurences = 2
-  )
+)
 adjacency_matrix <- song_matrix %*% t(song_matrix)
 adjacency_matrix[adjacency_matrix < 10] <- 0
 max(adjacency_matrix)
