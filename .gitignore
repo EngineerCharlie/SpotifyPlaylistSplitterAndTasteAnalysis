@@ -162,3 +162,8 @@ cython_debug/
 #.idea/
 .Rhistory
 SpotifyScraper/SpotifySecrets.py
+.cache-3nyfz418fjj74juqwk94vugfa
+Charlies_playlists.csv
+spotify_playlist.csv
+spotify_playlists_medium.csv
+spotify_song_info.csv
