@@ -142,6 +142,12 @@ colnames(user_song_popularity) <- c("Total songs", "Common songs", "Ratio", "Mea
 rownames(user_song_popularity) <- rownames(adjacency_matrix)
 user_song_popularity <- as.data.frame(user_song_popularity)
 
+###### Create matrix for users with unusual taste
+interesting_users <- rownames(user_song_popularity[user_song_popularity$Ratio <= 10 & user_song_popularity$`Total songs`>100,])
+interesting_users <- as.character(interesting_users)  # Convert to character vector for subsetting
+adjacency_matrix_subset <- adjacency_matrix[, interesting_users]
+interest_cons <- rowSums(adjacency_matrix_subset != 0)
+user_song_popularity$interest_cons <- interest_cons
 
 ####### Plot Average songs in common
 # Compute density estimate
@@ -152,14 +158,14 @@ percentile <- sum(user_song_popularity$Mean <= my_position) / length(user_song_p
 percentile <- sprintf("%.1f", percentile)
 
 ggplot(dens_df, aes(x, y)) +
-  geom_line(color = "blue") +
+  geom_line(color = "blue", size = 1.5) +
   labs(title = "PDF of  Average Number of Songs in Common",
        x = "Average songs in common", y = "Density") +
   theme_minimal() +
-  geom_vline(xintercept = user_song_popularity["Charlie",]$Mean, color = "red") +  # Add vertical red line
+  geom_vline(xintercept = user_song_popularity["Charlie",]$Mean, color = "red", size = 1) +  # Add vertical red line
   annotate("text", x = user_song_popularity["Charlie",]$Mean, y = max(dens_df$y), 
-           label = paste("                                        Me @ Percentile: ", percentile, ""),
-           color = "red", vjust = 10, hjust = 0.5) +  # Add text label
+           label = paste("Me @ Percentile: ", percentile, "%"),
+           color = "red", vjust = 10, hjust = -0.05) +  # Add text label
   theme(plot.title = element_text(hjust = 0.5))
 
 ####### Plot Ratio songs in common
@@ -167,19 +173,40 @@ ggplot(dens_df, aes(x, y)) +
 dens <- density(user_song_popularity$Ratio)
 dens_df <- data.frame(x = dens$x, y = dens$y)
 my_position <- user_song_popularity["Charlie",]$Ratio
-percentile <- sum(user_song_popularity$Ratio <= my_position) / length(user_song_popularity$Ratio) * 100
+percentile <- sum(user_song_popularity$Ratio <= 20) / length(user_song_popularity$Ratio) * 100
 percentile <- sprintf("%.1f", percentile)
 
 ggplot(dens_df, aes(x, y)) +
-  geom_line(color = "blue", size = 2) +
+  geom_line(color = "blue", size = 1.5) +
   labs(title = "PDF of  Ratio of Songs in Common",
        x = "Average (songs in common)/(total songs in playlists)", y = "Density") +
   theme_minimal() +
   geom_vline(xintercept = user_song_popularity["Charlie",]$Ratio, color = "red", size = 1) +  # Add vertical red line
   annotate("text", x = user_song_popularity["Charlie",]$Ratio, y = max(dens_df$y), 
-           label = paste("                                        Me @ Percentile: ", percentile, ""),
-           color = "red", vjust = 10, hjust = 0.5) +  # Add text label
+           label = paste("Me @ Percentile: ", percentile, "%"),
+           color = "red", vjust = 10, hjust = -0.05) +  # Add text label
   theme(plot.title = element_text(hjust = 0.5))
+
+####### Plot interesting user connections
+# Compute density estimate
+dens <- density(user_song_popularity$interest_cons)
+dens_df <- data.frame(x = dens$x, y = dens$y)
+my_position <- user_song_popularity["Charlie",]$interest_cons
+percentile <- sum(user_song_popularity$interest_cons <= 20) / length(user_song_popularity$interest_cons) * 100
+percentile <- sprintf("%.1f", percentile)
+
+ggplot(dens_df, aes(x, y)) +
+  geom_line(color = "blue", size = 1.5) +
+  labs(title = "PDF of unusual user links",
+       x = "Links to users with unusual tastes", y = "Density") +
+  theme_minimal() +
+  geom_vline(xintercept = user_song_popularity["Charlie",]$interest_cons, color = "red", size = 1) +  # Add vertical red line
+  annotate("text", x = user_song_popularity["Charlie",]$interest_cons, y = max(dens_df$y), 
+           label = paste("Me @ Percentile: ", percentile, "%"),
+           color = "red", vjust = 10, hjust = -0.05) +  # Add text label
+  theme(plot.title = element_text(hjust = 0.5))
+
+
 
 
 g <- graph_from_adjacency_matrix(adjacency_matrix,mode = c("undirected"), weighted=TRUE,diag=FALSE)
