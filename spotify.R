@@ -107,13 +107,6 @@ get_song_playlist_matrix <- function(
   playlist <- as.matrix(playlist[,-1]) # Remove playlist_name column
   return(playlist)
 }
-# Function to compute mean, median, and standard deviation excluding the diagonal
-row_stats <- function(row) {
-  mean_val <- mean(row)
-  median_val <- median(row)
-  sd_val <- sd(row)
-  return(c(mean_val, median_val, sd_val))
-}
 
 ######## #################### #################### #################### #################### ############
 ######## Analysing matrix of songs and users
