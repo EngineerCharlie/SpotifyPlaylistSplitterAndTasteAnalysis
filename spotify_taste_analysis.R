@@ -5,7 +5,6 @@ setwd("C:/Users/Charl/Programming/SpotifyPlaylistSplitter")
 row_stats <- function(row) {
   mean_val <- mean(row)
   median_val <- median(row)
-  sd_val <- sd(row)
   return(c(mean_val, median_val, sd_val))
 }
 # Function to compute percentile
@@ -95,10 +94,11 @@ ggplot(dens_df, aes(x, y)) +
 dens <- density(user_song_popularity$interest_cons)
 dens_df <- data.frame(x = dens$x, y = dens$y)
 my_position <- user_song_popularity["Charlie",]$interest_cons
-percentile <- sum(user_song_popularity$interest_cons <= my_position) / length(user_song_popularity$interest_cons) * 100
+percentile <- sum(user_song_popularity$interest_cons <= my_position) / 
+  length(user_song_popularity$interest_cons) * 100
 percentile <- sprintf("%.1f", percentile)
-percentiles <- apply(user_song_popularity, 1, compute_percentile_interesting)
-user_song_popularity$'Interesting Percentile' <- percentiles
+user_song_popularity$'Interesting Percentile' <- 
+  apply(user_song_popularity, 1, compute_percentile_interesting)
 
 ggplot(dens_df, aes(x, y)) +
   geom_line(color = "blue", size = 1.5) +
@@ -111,9 +111,12 @@ ggplot(dens_df, aes(x, y)) +
            color = "red", vjust = 10, hjust = -0.05) +  # Add text label
   theme(plot.title = element_text(hjust = 0.5))
 
-user_song_popularity$'Combined Score' <- (user_song_popularity$'Interesting Percentile'/100)*(user_song_popularity$'Ratio Percentile'/100)
-percentiles <- apply(user_song_popularity, 1, compute_percentile_combined)
-user_song_popularity$'Comb score Percentile' <- percentiles
+user_song_popularity$'Combined Score' <- 
+  (user_song_popularity$'Interesting Percentile'/100)*
+  (user_song_popularity$'Ratio Percentile'/100)
+user_song_popularity$'Comb score Percentile' <- 
+  apply(user_song_popularity, 1, compute_percentile_combined)
+
 user_song_popularity['Charlie',]
 
 
@@ -122,13 +125,14 @@ user_song_popularity['Charlie',]
 dens <- density(user_song_popularity$'Combined Score')
 dens_df <- data.frame(x = dens$x, y = dens$y)
 my_position <- user_song_popularity["Charlie",]$'Combined Score'
-percentile <- sum(user_song_popularity$'Combined Score' <= my_position) / length(user_song_popularity$'Combined Score') * 100
+percentile <- sum(user_song_popularity$'Combined Score' <= my_position) /
+  length(user_song_popularity$'Combined Score') * 100
 percentile <- sprintf("%.1f", percentile)
 
 ggplot(dens_df, aes(x, y)) +
   geom_line(color = "blue", size = 1.5) +
   labs(title = "PDF of combined music taste score",
-       x = "Links to users with unusual tastes", y = "Density") +
+       x = "Combined broadness + interesting taste score", y = "Density") +
   theme_minimal() +
   geom_vline(xintercept = user_song_popularity["Charlie",]$'Combined Score', color = "red", size = 1) +  # Add vertical red line
   annotate("text", x = user_song_popularity["Charlie",]$'Combined Score', y = max(dens_df$y), 
