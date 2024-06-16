@@ -5,7 +5,7 @@ setwd("C:/Users/Charl/Programming/SpotifyPlaylistSplitter")
 row_stats <- function(row) {
   mean_val <- mean(row)
   median_val <- median(row)
-  return(c(mean_val, median_val, sd_val))
+  return(c(mean_val, median_val))
 }
 # Function to compute percentile
 compute_percentile_ratio <- function(value) {
@@ -37,7 +37,7 @@ common_songs <- rowSums(adjacency_matrix)
 song_choice_stats <- t(apply(adjacency_matrix, 1, row_stats))
 song_choice_ratio <- common_songs / total_user_songs
 user_song_popularity <- cbind(total_user_songs, common_songs, song_choice_ratio, song_choice_stats)
-colnames(user_song_popularity) <- c("Total songs", "Common songs", "Ratio", "Mean", "Median", "SD")
+colnames(user_song_popularity) <- c("Total songs", "Common songs", "Ratio", "Mean", "Median")
 rownames(user_song_popularity) <- rownames(adjacency_matrix)
 user_song_popularity <- as.data.frame(user_song_popularity)
 
@@ -45,54 +45,65 @@ user_song_popularity <- as.data.frame(user_song_popularity)
 interesting_users <- rownames(user_song_popularity[user_song_popularity$Ratio <= 10 & user_song_popularity$`Total songs`>100,])
 interesting_users <- as.character(interesting_users)  # Convert to character vector for subsetting
 adjacency_matrix_subset <- adjacency_matrix[, interesting_users]
-interest_cons <- rowSums(adjacency_matrix_subset != 0)
+interest_cons <- rowSums(adjacency_matrix_subset)/user_song_popularity$'Total songs'
 user_song_popularity$interest_cons <- interest_cons
 
-####### Plot Average songs in common
+####### Plot mean songs in common
 # Compute density estimate
-dens <- density(user_song_popularity$Mean)
-dens_df <- data.frame(x = dens$x, y = dens$y)
 my_position <- user_song_popularity["Charlie",]$Mean
 percentile <- sum(user_song_popularity$Mean <= my_position) / length(user_song_popularity$Mean) * 100
 percentile <- sprintf("%.1f", percentile)
 
-ggplot(dens_df, aes(x, y)) +
-  geom_line(color = "blue", linewidth = 1.5) +
-  labs(title = "PDF of  Average Number of Songs in Common",
-       x = "Average songs in common", y = "Density") +
+ggplot(user_song_popularity, aes(x = Mean)) +
+  geom_histogram(binwidth = 1, fill = "lightgreen", color = "black", alpha = 0.7) +
+  labs(title = "",#Histogram of Mean Number of Common Songs",
+       x ="",# "Mean Number of Common Songs",
+       y ="")+# "Frequency") +
   theme_minimal() +
-  geom_vline(xintercept = user_song_popularity["Charlie",]$Mean, color = "red", size = 1) +  # Add vertical red line
-  annotate("text", x = user_song_popularity["Charlie",]$Mean, y = max(dens_df$y), 
-           label = paste("Me @ Percentile: ", percentile, "%"),
-           color = "red", vjust = 10, hjust = -0.05) +  # Add text label
-  theme(plot.title = element_text(hjust = 0.5))
+  coord_cartesian(xlim = c(0, 30)) + 
+  theme(
+    plot.background = element_rect(fill = "black"),
+    panel.background = element_rect(fill = "black"),
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "white"),
+    text = element_text(color = "white"),
+    axis.text = element_text(color = 'white')
+  )
+
+
 
 ####### Plot Ratio songs in common
-# Compute density estimate
-dens <- density(user_song_popularity$Ratio)
-dens_df <- data.frame(x = dens$x, y = dens$y)
 my_position <- user_song_popularity["Charlie",]$Ratio
 percentile <- sum(user_song_popularity$Ratio <= my_position) / length(user_song_popularity$Ratio) * 100
 percentile <- sprintf("%.1f", percentile)
 percentiles <- apply(user_song_popularity, 1, compute_percentile_ratio)
 user_song_popularity$'Ratio Percentile' <- percentiles
 
-
-ggplot(dens_df, aes(x, y)) +
-  geom_line(color = "blue", size = 1.5) +
-  labs(title = "PDF of  Ratio of Songs in Common",
-       x = "Average (songs in common)/(total songs in playlists)", y = "Density") +
+ggplot(user_song_popularity, aes(x = Ratio)) +
+  geom_histogram(binwidth = 10, fill = "lightgreen", color = "black", alpha = 0.7) +
+  labs(title = "",#Histogram of Mean Number of Common Songs",
+       x ="",# "Mean Number of Common Songs",
+       y ="")+# "Frequency") +
   theme_minimal() +
-  geom_vline(xintercept = user_song_popularity["Charlie",]$Ratio, color = "red", size = 1) +  # Add vertical red line
-  annotate("text", x = user_song_popularity["Charlie",]$Ratio, y = max(dens_df$y), 
-           label = paste("Me @ Percentile: ", percentile, "%"),
-           color = "red", vjust = 10, hjust = -0.05) +  # Add text label
-  theme(plot.title = element_text(hjust = 0.5))
+  coord_cartesian(xlim = c(0, 800)) + 
+  theme(
+    plot.background = element_rect(fill = "black"),
+    panel.background = element_rect(fill = "black"),
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "white"),
+    text = element_text(color = "white"),
+    axis.text = element_text(color = 'white')
+  )
+
+
+
 
 ####### Plot interesting user connections
 # Compute density estimate
-dens <- density(user_song_popularity$interest_cons)
-dens_df <- data.frame(x = dens$x, y = dens$y)
 my_position <- user_song_popularity["Charlie",]$interest_cons
 percentile <- sum(user_song_popularity$interest_cons <= my_position) / 
   length(user_song_popularity$interest_cons) * 100
@@ -100,16 +111,23 @@ percentile <- sprintf("%.1f", percentile)
 user_song_popularity$'Interesting Percentile' <- 
   apply(user_song_popularity, 1, compute_percentile_interesting)
 
-ggplot(dens_df, aes(x, y)) +
-  geom_line(color = "blue", size = 1.5) +
-  labs(title = "PDF of links  to unusual users",
-       x = "Links to users with unusual tastes", y = "Density") +
+ggplot(user_song_popularity, aes(x = interest_cons)) +
+  geom_histogram(binwidth = 0.01, fill = "lightgreen", color = "black", alpha = 0.7) +
+  labs(title = "",#Histogram of Mean Number of Common Songs",
+       x ="",# "Mean Number of Common Songs",
+       y ="")+# "Frequency") +
   theme_minimal() +
-  geom_vline(xintercept = user_song_popularity["Charlie",]$interest_cons, color = "red", size = 1) +  # Add vertical red line
-  annotate("text", x = user_song_popularity["Charlie",]$interest_cons, y = max(dens_df$y), 
-           label = paste("Me @ Percentile: ", percentile, "%"),
-           color = "red", vjust = 10, hjust = -0.05) +  # Add text label
-  theme(plot.title = element_text(hjust = 0.5))
+  coord_cartesian(xlim = c(0, 1.05)) + 
+  theme(
+    plot.background = element_rect(fill = "black"),
+    panel.background = element_rect(fill = "black"),
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "white"),
+    text = element_text(color = "white"),
+    axis.text = element_text(color = 'white')
+  )
 
 user_song_popularity$'Combined Score' <- 
   (user_song_popularity$'Interesting Percentile'/100)*
@@ -122,20 +140,25 @@ user_song_popularity['Charlie',]
 
 ####### Plot interesting user connections
 # Compute density estimate
-dens <- density(user_song_popularity$'Combined Score')
-dens_df <- data.frame(x = dens$x, y = dens$y)
 my_position <- user_song_popularity["Charlie",]$'Combined Score'
 percentile <- sum(user_song_popularity$'Combined Score' <= my_position) /
   length(user_song_popularity$'Combined Score') * 100
 percentile <- sprintf("%.1f", percentile)
 
-ggplot(dens_df, aes(x, y)) +
-  geom_line(color = "blue", size = 1.5) +
-  labs(title = "PDF of combined music taste score",
-       x = "Combined broadness + interesting taste score", y = "Density") +
+ggplot(user_song_popularity, aes(x = `Combined Score`)) +
+  geom_histogram(binwidth = 0.02, fill = "lightgreen", color = "black", alpha = 0.7) +
+  labs(title = "", # Histogram of Mean Number of Common Songs",
+       x = "",    # "Mean Number of Common Songs",
+       y = "") +  # "Frequency") +
   theme_minimal() +
-  geom_vline(xintercept = user_song_popularity["Charlie",]$'Combined Score', color = "red", size = 1) +  # Add vertical red line
-  annotate("text", x = user_song_popularity["Charlie",]$'Combined Score', y = max(dens_df$y), 
-           label = paste("Me @ Percentile: ", percentile, "%"),
-           color = "red", vjust = 10, hjust = -0.05) +  # Add text label
-  theme(plot.title = element_text(hjust = 0.5))
+  coord_cartesian(xlim = c(0, 1)) +
+  theme(
+    plot.background = element_rect(fill = "black"),
+    panel.background = element_rect(fill = "black"),
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "white"),
+    text = element_text(color = "white"),
+    axis.text = element_text(color = 'white')
+  )

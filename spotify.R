@@ -131,7 +131,16 @@ adjacency_matrix <- adjacency_matrix[c(1:small_matrix_size, row_index), c(1:smal
 adjacency_matrix <- as.matrix(adjacency_matrix)
 g <- graph_from_adjacency_matrix(adjacency_matrix,mode = c("undirected"), weighted=TRUE,diag=FALSE)
 
-# Plot the graph
+#### Some graph statistics
+edge_density(g, loops=F)
+median(degree(g))
+centr_degree(g, mode="in", normalized=T)$centralization
+transitivity(g,"global")
+diameter(g, directed=F)
+g_d = distances(g, weights = NA)
+mean_finite_distances <- mean(g_d[is.finite(g_d)])
+
+#### Plotting the graph
 l <- layout_with_kk(g)
 l2  = sqrt(rowSums(l*l))
 #sort(l2, decreasing = T)
