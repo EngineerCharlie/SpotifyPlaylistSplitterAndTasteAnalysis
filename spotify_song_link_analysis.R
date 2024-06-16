@@ -19,9 +19,10 @@ get_largest_playlist <- function(name) {
   return(largest_playlist)
 }
 #### Keep only the rows where a song to be analysed is present
-my_playlists = get_charlies_playlists()
-my_playlist_names = unique(my_playlists$playlist_name)
-my_songs = unique(my_playlists$song)
+my_playlists <- get_charlies_playlists()
+#my_playlists <- my_playlists[my_playlists$playlist_name == "Millennial guitar music Charlie",]
+my_playlist_names <- unique(my_playlists$playlist_name)
+my_songs <- unique(my_playlists$song)
 row_indices <- which(rownames(song_matrix) %in% my_songs)
 song_matrix <- song_matrix[row_indices, ]
 #### Remove all the playlists which are now empty
@@ -137,3 +138,4 @@ max_percentage_per_source <- source_target_percentage %>%
 max_percentage_per_source <- max_percentage_per_source %>%
   rename(source_playlist = playlist.x)
 
+community_membership$artist <- sapply(strsplit(community_membership$song, " - "), `[`, 1)
