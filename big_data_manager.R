@@ -8,11 +8,12 @@ playlist <- data.frame(
 # Convert to factors to get unique integer identifiers
 playlist$user_id <- as.factor(playlist$user_id)
 playlist$song <- as.factor(playlist$song)
+playlist$playlist_name <- as.factor(playlist$playlist_name)
 
 # Get the numeric representations
 users <- as.integer(playlist$user_id)
 songs <- as.integer(playlist$song)
-
+playlists <- as.integer(playlist$playlist_name)
 # Create the sparse matrix
 sparse_adj_matrix <- sparseMatrix(
   i = songs,
@@ -20,10 +21,21 @@ sparse_adj_matrix <- sparseMatrix(
   x = 1,  # value to be inserted (1 indicates the presence of the song in the playlist)
   dims = c(length(levels(playlist$song)),length(levels(playlist$user_id)))
 )
+sparse_adj_matrix <- sparseMatrix(
+  i = songs,
+  j = playlists,
+  x = 1,  # value to be inserted (1 indicates the presence of the song in the playlist)
+  dims = c(length(levels(playlist$song)),length(levels(playlist$playlist_name)))
+)
 
 # Assign row and column names
 rownames(sparse_adj_matrix) <- levels(playlist$song)
 colnames(sparse_adj_matrix) <- levels(playlist$user_id)
+colnames(sparse_adj_matrix) <- levels(playlist$playlist_name)
 
 saveRDS(sparse_adj_matrix, "user_song_adj_minsong2.rds")
+user_song_adj <- readRDS("user_song_adj_minsong2.rds")
+
+
+saveRDS(sparse_adj_matrix, "playlist_song_adj_minsong2.rds")
 user_song_adj <- readRDS("user_song_adj_minsong2.rds")
