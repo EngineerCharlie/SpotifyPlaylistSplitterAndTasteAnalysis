@@ -42,7 +42,7 @@ rownames(user_song_popularity) <- rownames(adjacency_matrix)
 user_song_popularity <- as.data.frame(user_song_popularity)
 
 ###### Create matrix for users with unusual taste
-interesting_users <- rownames(user_song_popularity[user_song_popularity$Ratio <= 10 & user_song_popularity$`Total songs`>100,])
+interesting_users <- rownames(user_song_popularity[user_song_popularity$Ratio <= 14.5 & user_song_popularity$`Total songs`>100,])
 interesting_users <- as.character(interesting_users)  # Convert to character vector for subsetting
 adjacency_matrix_subset <- adjacency_matrix[, interesting_users]
 interest_cons <- rowSums(adjacency_matrix_subset)/user_song_popularity$'Total songs'
@@ -162,3 +162,31 @@ ggplot(user_song_popularity, aes(x = `Combined Score`)) +
     text = element_text(color = "white"),
     axis.text = element_text(color = 'white')
   )
+cov(user_song_popularity[,c('Interesting Percentile','Ratio Percentile')])
+index_X <- which(rownames(user_song_popularity) == "Charlie")
+colors <- rep("white", nrow(user_song_popularity))
+colors[index_X] <- "green"
+sizes <- rep(0.1, nrow(user_song_popularity))
+sizes[index_X] <- 3
+plot(user_song_popularity$`Ratio Percentile`,
+     user_song_popularity$`Interesting Percentile`,
+     pch = 16,  # Use dots for points
+     col = colors,  # White points
+     cex = sizes,
+     bg = "black",  # Background color (only affects the plotting area)
+     xlab = "",  # Remove x-axis label
+     ylab = "",  # Remove y-axis label
+     main = "",  # Remove title
+     axes = FALSE,  # Remove axis labels
+     #panel.first = par(bg = "black")  # Set background color for the entire plot
+)
+filtered_users = user_song_popularity[user_song_popularity$'Total songs' > 20, ]
+
+# Identify the user with the maximum Comb Score Percentile
+best_taste_user <-rownames(filtered_users[which.max(filtered_users$'Comb score Percentile'),])
+songs = rownames(song_matrix[song_matrix[,best_taste_user]>0,])
+unique(sapply(strsplit(songs, " - "), `[`, 1))
+worst_taste_user <-rownames(filtered_users[which.min(filtered_users$'Comb score Percentile'),])
+songs = rownames(song_matrix[song_matrix[,worst_taste_user]>0,])
+unique(sapply(strsplit(songs, " - "), `[`, 1))
+       
