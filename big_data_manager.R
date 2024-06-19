@@ -5,6 +5,31 @@ playlist <- data.frame(
   song_id = c("song1", "song2", "song1", "song3", "song2")
 )
 
+
+playlist <- read_delim("spotify_playlists.csv", delim = ",", escape_double = TRUE)
+
+# Select the first n rows
+n = 0
+if (n > 0){
+  playlist <- playlist[1:n,]
+}
+
+#################  DATA CLEANING ####################
+# Fix the column names
+colnames(playlist) <- gsub(' "trackname"', 'track_name', colnames(playlist))
+colnames(playlist) <- gsub(' "artistname"', 'artist_name', colnames(playlist))
+colnames(playlist) <- gsub(' "playlistname"', 'playlist_name', colnames(playlist))
+
+
+min_song_occurences = 2
+playlist <- get_playlist_data(rows_to_scrape) %>%
+  mutate(song = paste(artist_name, track_name, sep = " - ")) %>%
+  select(user_id,playlist_name,song) %>%
+  unique() %>%
+  group_by(song) %>%
+  filter(n() >= min_song_occurences) %>% #Remove all songs occuring only once, since they cannot be analysed
+  ungroup()
+
 # Convert to factors to get unique integer identifiers
 playlist$user_id <- as.factor(playlist$user_id)
 playlist$song <- as.factor(playlist$song)
