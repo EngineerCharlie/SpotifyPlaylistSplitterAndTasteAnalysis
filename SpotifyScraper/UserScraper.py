@@ -1,5 +1,4 @@
 import SpotipyBootstrap
-import SpotifySecrets
 import csv
 import time
 import random
@@ -8,20 +7,17 @@ import random
 # Get current user's playlists created by the user
 def get_user_playlist_owners_and_playlists(user_id):
     offset = 0
-    limit = 50
+    limit = 25
     user_playlist_owners = set()
     playlist_ids = set()
-    print("pinging api")
     response = SpotipyBootstrap.sp.user_playlists(user_id, offset=offset, limit=limit)
-    print("pinged api")
     while len(response["items"]) > 0:
-        print(response["items"])
         for playlist in response["items"]:
             playlist_ids.add(playlist["id"])
             user_playlist_owners.add(playlist["owner"]["id"])
         offset += 50
-        time.sleep(random.random() * 5)
-        if len(response["items"]) < 50:
+        time.sleep(1 + random.random() * 3)
+        if len(response["items"]) < limit:
             break
         response = SpotipyBootstrap.sp.user_playlists(
             user_id, offset=offset, limit=limit
