@@ -1,3 +1,6 @@
+library(readr)
+library(dplyr)
+setwd("C:/Users/Charl/Documents/GitHub/SpotifyPlaylistSplitter")
 # Sample data frame
 # Assuming 'playlist' has columns 'playlist_id' and 'song_id'
 playlist <- data.frame(
@@ -6,7 +9,7 @@ playlist <- data.frame(
 )
 
 
-playlist <- read_delim("spotify_playlists.csv", delim = ",", escape_double = TRUE)
+playlist <- read_delim("spotify_playlist.csv", delim = ",", escape_double = TRUE)
 
 # Select the first n rows
 n = 0
