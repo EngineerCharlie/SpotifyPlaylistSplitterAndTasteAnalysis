@@ -27,7 +27,7 @@ explored_users = set()
 playlist_ids = set()
 times_errored = 0
 
-csv_file = "spot_data_users_to_explore.csv"
+csv_file = "SpotifyScraper/spot_data_users_to_explore.csv"
 try:
     with open(csv_file, mode="r", newline="", encoding="utf-8") as file:
         reader = csv.reader(file)
@@ -35,7 +35,8 @@ try:
             if row:  # Ensure row is not empty
                 users_to_explore.add(row[0])  # Add each user_id to the set
 except FileNotFoundError:
-    print(f"{csv_file} not found. Starting with an empty users_to_explore set.")
+    print(f"{csv_file} not found. Terminating program.")
+    exit()
 
 while users_to_explore and len(explored_users) < 100000:
     current_user = users_to_explore.pop()
@@ -46,7 +47,9 @@ while users_to_explore and len(explored_users) < 100000:
         new_users, new_playlists = get_user_playlist_owners_and_playlists(current_user)
     except Exception as e:
         users_to_explore.add(current_user)
-        print("ERROR: \n{e}")
+        print(
+            "\n\n_____________________________________________________\n\nERROR: \n{e}"
+        )
         if times_errored < 3:
             time.sleep(5)
             times_errored += 1
@@ -55,20 +58,18 @@ while users_to_explore and len(explored_users) < 100000:
             break
     new_users -= explored_users
     playlist_ids.update(new_playlists)
-    # users_to_explore.update(new_users)
+    users_to_explore.update(new_users)
 
-
-csv_file = "spot_data_users_to_explore.csv"
 with open(csv_file, mode="w", newline="", encoding="utf-8") as file:
     writer = csv.writer(file)  # Write header
     writer.writerows([[user_id] for user_id in users_to_explore])  # Write data
 
-csv_file = "spot_data_explored_user_ids.csv"
-with open(csv_file, mode="w", newline="", encoding="utf-8") as file:
+csv_file = "SpotifyScraper/spot_data_explored_user_ids.csv"
+with open(csv_file, mode="a", newline="", encoding="utf-8") as file:
     writer = csv.writer(file)  # Write header
     writer.writerows([[user_id] for user_id in explored_users])  # Write data
 
-csv_file = "spot_data_playlist_ids.csv"
+csv_file = "SpotifyScraper/spot_data_playlist_ids.csv"
 with open(csv_file, mode="a", newline="", encoding="utf-8") as file:
     writer = csv.writer(file)  # Write header
     writer.writerows([[playlist_id] for playlist_id in playlist_ids])  # Write data

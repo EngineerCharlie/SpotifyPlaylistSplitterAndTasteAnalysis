@@ -171,3 +171,6 @@ spotify_playlists.csv
 user_song_adj_minsong2.rds
 user_song_minsong2.csv
 playlist_song_adj_minsong2.rds
+SpotifyScraper/spot_data_users_to_explore.csv
+SpotifyScraper/spot_data_playlist_ids.csv
+SpotifyScraper/spot_data_explored_user_ids.csv
