@@ -3,6 +3,8 @@ import csv
 import time
 import random
 
+request_delay = 15
+
 
 # Get current user's playlists created by the user
 def get_user_playlist_owners_and_playlists(user_id):
@@ -16,7 +18,7 @@ def get_user_playlist_owners_and_playlists(user_id):
             playlist_ids.add(playlist["id"])
             user_playlist_owners.add(playlist["owner"]["id"])
         offset += 50
-        time.sleep(1 + random.random() * 3)
+        time.sleep(request_delay)
         if len(response["items"]) < limit:
             break
         response = SpotipyBootstrap.sp.user_playlists(
@@ -30,37 +32,54 @@ def get_user_playlist_owners_and_playlists(user_id):
 users_to_explore = set()
 explored_users = set()
 playlist_ids = set()
+new_explored_users = set()
 times_errored = 0
 
-csv_file = "SpotifyScraper/spot_data_users_to_explore.csv"
 try:
+    csv_file = "SpotifyScraper/spot_data_users_to_explore.csv"
     with open(csv_file, mode="r", newline="", encoding="utf-8") as file:
         reader = csv.reader(file)
         for row in reader:
             if row:  # Ensure row is not empty
-                users_to_explore.add(row[0])  # Add each user_id to the set
+                users_to_explore.add(row[0])  # Add each user_id to the set\
+
+    csv_file = "SpotifyScraper/spot_data_explored_user_ids.csv"
+    with open(csv_file, mode="r", newline="", encoding="utf-8") as file:
+        reader = csv.reader(file)
+        for row in reader:
+            if row:  # Ensure row is not empty
+                explored_users.add(row[0])  # Add each user_id to the set
+
+    csv_file = "SpotifyScraper/spot_data_playlist_ids.csv"
+    with open(csv_file, mode="r", newline="", encoding="utf-8") as file:
+        reader = csv.reader(file)
+        for row in reader:
+            if row:  # Ensure row is not empty
+                playlist_ids.add(row[0])  # Add each user_id to the set
 except FileNotFoundError:
     print(f"{csv_file} not found. Terminating program.")
     exit()
 
 
 def checkpoint():
+    csv_file = "SpotifyScraper/spot_data_users_to_explore.csv"
     with open(csv_file, mode="w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)  # Write header
         writer.writerows([[user_id] for user_id in users_to_explore])  # Write data
 
     csv_file = "SpotifyScraper/spot_data_explored_user_ids.csv"
-    with open(csv_file, mode="a", newline="", encoding="utf-8") as file:
+    with open(csv_file, mode="w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)  # Write header
         writer.writerows([[user_id] for user_id in explored_users])  # Write data
 
     csv_file = "SpotifyScraper/spot_data_playlist_ids.csv"
-    with open(csv_file, mode="a", newline="", encoding="utf-8") as file:
+    with open(csv_file, mode="w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)  # Write header
         writer.writerows([[playlist_id] for playlist_id in playlist_ids])  # Write data
 
 
-while users_to_explore and len(explored_users) < 100000:
+num_explored_users = 0
+while users_to_explore and num_explored_users < 100000:
     current_user = users_to_explore.pop()
     print(current_user)
     print(len(users_to_explore))
@@ -73,16 +92,19 @@ while users_to_explore and len(explored_users) < 100000:
     except Exception as e:
         users_to_explore.add(current_user)
         print(
-            "\n\n_____________________________________________________\n\nERROR: \n{e}"
+            f"\n\n_____________________________________________________\n\nERROR: \n{e}"
         )
         if times_errored < 3:
-            time.sleep(15)
+            time.sleep(120)
             times_errored += 1
             pass
         else:
             break
-    if len(explored_users) % 5 == 0:
-        print("{explored_users} explored users")
+    num_explored_users = len(explored_users)
+    if num_explored_users % 25 == 0:
+
+        print(f"\n\n______Checkpoint_____\n{num_explored_users} explored users")
+        print(time.ctime())
         checkpoint()
 
 checkpoint()
