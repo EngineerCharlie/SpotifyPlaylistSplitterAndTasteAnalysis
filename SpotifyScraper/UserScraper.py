@@ -26,6 +26,9 @@ def get_user_playlist_owners_and_playlists(user_id):
         )
         if offset > 250:
             print("this user has a shitload of playlists")
+        if offset >500:
+            print("Over 500, sod this breaking the loop")
+            break
     return user_playlist_owners, playlist_ids
 
 
