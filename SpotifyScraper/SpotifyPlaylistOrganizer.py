@@ -48,7 +48,7 @@ def get_playlist_track_popularities(sp, playlist):
         )
         for track_id in ids_removed:
             track_name, track_artists = track_id_name_dict[track_id]
-            print(f"Removed track: {track_name} by {track_artists}")
+            print(f"Removing track: {track_name} by {track_artists}")
 
         track_popularity_dict = new_track_popularity_dict
 
@@ -245,15 +245,19 @@ def update_playlist(
     sp: SpotipyBootstrap.spotipy.Spotify, playlist_id, old_tracks, new_tracks
 ):
     assert len(new_tracks) != 0
-    sp.playlist_remove_all_occurrences_of_items(playlist_id, old_tracks)
-    while new_tracks:
+    while old_tracks:
         track_slice = []
         try:
             for i in range(50):
-                track_slice.append(new_tracks.pop())
+                track_slice.append(old_tracks.pop())
 
         except IndexError:
             pass
+        sp.playlist_remove_all_occurrences_of_items(playlist_id, track_slice)
+    while new_tracks:
+        track_slice = []
+        for i in range(min(50, len(new_tracks))):
+            track_slice.append(new_tracks.pop())
         sp.playlist_add_items(playlist_id, track_slice)
 
 
@@ -276,11 +280,18 @@ def reorder_playlist(playlist_id: str):
     elapsed_time = end_time - start_time
     print(f"New order calculated in {elapsed_time:.4f} seconds")
     print(track_ordering)
+    playlist_backup_id = SpotipyBootstrap.sp.user_playlist_create(
+        SpotipyBootstrap.SpotifySecrets.SPOTIFY_USERNAME, "backup"
+    )["id"]
+    update_playlist(SpotipyBootstrap.sp, playlist_backup_id, [], original_tracks.copy())
     update_playlist(SpotipyBootstrap.sp, playlist_id, original_tracks, track_ordering)
+    SpotipyBootstrap.sp.user_playlist_unfollow(
+        SpotipyBootstrap.SpotifySecrets.SPOTIFY_USERNAME, playlist_backup_id
+    )
 
 
 if __name__ == "__main__":
-    reorder_playlist("3Ilo6cyMtDAPt332MzqIAG")
+    reorder_playlist("3O4xCt4hBP0uDoQS5C1izu")
     # 300 song playlist 6Id3z1jonSXh0KNwjF2gBG
     # 13 song playlist 3Ilo6cyMtDAPt332MzqIAG
     # 3 song double playlist 5GJrAohQqT6afu6XHIwf3q
