@@ -1,31 +1,69 @@
-import SpotifySecrets  # Rename SpotifySecretsGeneric.py to SpotifySecrets.py, and add your secret info
-from spotipy.oauth2 import SpotifyOAuth
 import SpotipyBootstrap as SpotipyBootstrap
 import pandas as pd
 import numpy as np
 import networkx as nx
+import time
 
 
 # Function to get all tracks in a playlist
-def get_playlist_track_popularities(sp, playlists):
-    song_popularity_dict = {}
-    for playlist in playlists:
-        results = sp.playlist_tracks(playlist)
-        song_popularity_dict.update(
+def get_playlist_track_popularities(sp, playlist):
+
+    def get_track_key(track):
+        track_name = track["name"]
+        track_artists = ", ".join(artist["name"] for artist in track["artists"])
+        return (track_name, track_artists)
+
+    track_set = set()
+    track_popularity_dict, track_name_id_dict, track_id_name_dict = {}, {}, {}
+
+    results = sp.playlist_tracks(playlist)
+    track_set.update([get_track_key(item["track"]) for item in results["items"]])
+    track_popularity_dict.update(
+        {item["track"]["id"]: item["track"]["popularity"] for item in results["items"]}
+    )
+    track_name_id_dict.update(
+        {get_track_key(item["track"]): item["track"]["id"] for item in results["items"]}
+    )
+    track_id_name_dict.update(
+        {item["track"]["id"]: get_track_key(item["track"]) for item in results["items"]}
+    )
+    while results["next"]:
+        results = sp.next(results)
+        track_popularity_dict.update(
             {
                 item["track"]["id"]: item["track"]["popularity"]
                 for item in results["items"]
             }
         )
-        while results["next"]:
-            results = sp.next(results)
-            song_popularity_dict.update(
-                {
-                    item["track"]["id"]: item["track"]["popularity"]
-                    for item in results["items"]
-                }
-            )
-    return song_popularity_dict
+        track_set.update([get_track_key(item["track"]) for item in results["items"]])
+        track_name_id_dict.update(
+            {
+                get_track_key(item["track"]): item["track"]["id"]
+                for item in results["items"]
+            }
+        )
+        track_id_name_dict.update(
+            {
+                item["track"]["id"]: get_track_key(item["track"])
+                for item in results["items"]
+            }
+        )
+    if len(track_set) != track_popularity_dict:
+        new_track_popularity_dict = {
+            track_name_id_dict[track_key]: track_popularity_dict[
+                track_name_id_dict[track_key]
+            ]
+            for track_key in track_set
+        }
+        ids_removed = set(track_popularity_dict.keys()) - set(
+            new_track_popularity_dict.keys()
+        )
+        for id in ids_removed:
+            print(track_id_name_dict[id])
+        track_popularity_dict = new_track_popularity_dict
+    if len(track_popularity_dict) == 1:
+        raise Exception("Need more than 1  track to sort")
+    return track_popularity_dict
 
 
 def get_track_audio_features(
@@ -37,7 +75,7 @@ def get_track_audio_features(
 
     while track_popularity_dict:
         # Pop up to 100 track IDs and their popularity from the dictionary
-        track_slice = list(track_popularity_dict.keys())[:100]
+        track_slice = list(track_popularity_dict.keys())[:95]
         popularity_slice = [
             track_popularity_dict.pop(track_id) for track_id in track_slice
         ]
@@ -58,7 +96,6 @@ def get_track_audio_features(
         track_popularity.extend(
             [popularity_slice[i] for i in range(len(valid_results))]
         )
-
     # Convert the list of dictionaries to a DataFrame
     df = pd.DataFrame(track_audio_features)
 
@@ -143,6 +180,7 @@ def song_matching(track_audio_features: pd.DataFrame):
         # Update the matrix
         matching_matrix[i, :] = weighted_differences
         matching_matrix[:, i] = weighted_differences  # Symmetric matrix
+
     np.fill_diagonal(matching_matrix, np.inf)
     # Convert to DataFrame
     matching_df = pd.DataFrame(matching_matrix, index=track_ids, columns=track_ids)
@@ -187,7 +225,7 @@ def musical_key_compare(track_a, track_b):
 
 def tempo_proportional_dif(track_a_tempo, track_b_tempo):
     # List of possible multiples and divisions by powers of 2
-    multiples = [1, 2, 4]
+    multiples = [1, 2, 4, 8]
     min_tempo = min(track_a_tempo, track_b_tempo)
     max_tempo = max(track_a_tempo, track_b_tempo)
 
@@ -200,26 +238,56 @@ def tempo_proportional_dif(track_a_tempo, track_b_tempo):
 
 
 def solve_tsp(distance_matrix: pd.DataFrame):
-    G = nx.from_numpy_array(distance_matrix)
-    # Solve TSP using NetworkX's approximation algorithm
-    tsp_path = nx.approximation.christofides(G)
-    return tsp_path  # , tsp_length
+    try:
+        G = nx.from_numpy_array(distance_matrix)
+        # Solve TSP using NetworkX's approximation algorithm
+        tsp_path = nx.approximation.christofides(G)
+        return tsp_path  # , tsp_length
+    except nx.exception.NetworkXError as e:
+        print(e)
+        print(G)
+        print(distance_matrix)
 
 
-def main(playlist_id: str):
+def update_playlist(sp: SpotipyBootstrap.spotipy.Spotify, playlist_id, old_tracks, new_tracks):
+    sp.playlist_remove_all_occurrences_of_items(playlist_id,old_tracks)
+    while new_tracks:
+        track_slice = []
+        try:
+            for i in range(50):
+                track_slice.append(new_tracks.pop())
+        except KeyError:
+            pass
+        sp.playlist_add_items(playlist_id, track_slice)
+
+
+
+def reorder_playlist(playlist_id: str):
     # Fetch tracks for playlist
-    track_popularity_dict = get_playlist_track_popularities(SpotipyBootstrap.sp, [playlist_id])
+    track_popularity_dict = get_playlist_track_popularities(
+        SpotipyBootstrap.sp, playlist_id
+    )
     audio_features_matrix = get_track_audio_features(
         SpotipyBootstrap.sp, track_popularity_dict
     )
-    song_matching_matrix = song_matching(audio_features_matrix)
-    song_matching_matrix = song_matching_matrix.to_numpy()
-    song_ordering = solve_tsp(song_matching_matrix)
-    print(song_ordering)
+    start_time = time.time()
+    track_matching_matrix = song_matching(audio_features_matrix)
+    track_ids = track_matching_matrix.index
+    track_matching_matrix = track_matching_matrix.to_numpy()
+    track_ordering = solve_tsp(track_matching_matrix)
+    track_ordering = [track_ids[track_id] for track_id in track_ordering]
+    end_time = time.time()
+    # Calculate and print the elapsed time
+    elapsed_time = end_time - start_time
+    print(f"New order calculated in {elapsed_time:.4f} seconds")
+    print(track_ordering[:-1])
 
 
 if __name__ == "__main__":
-    main("3Ilo6cyMtDAPt332MzqIAG")
+    reorder_playlist("3Ilo6cyMtDAPt332MzqIAG")
+    # 300 song playlist 6Id3z1jonSXh0KNwjF2gBG
+    # 13 song playlist 3Ilo6cyMtDAPt332MzqIAG
+    # 2 song double playlist 5GJrAohQqT6afu6XHIwf3q
 
 WEIGHTING = {
     "danceability_dif": 6,
