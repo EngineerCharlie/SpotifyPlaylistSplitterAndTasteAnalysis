@@ -8,7 +8,7 @@ SPOTIPY_CLIENT_SECRET = SpotifySecrets.SPOTIPY_CLIENT_SECRET
 SPOTIPY_REDIRECT_URI = SpotifySecrets.SPOTIPY_REDIRECT_URI
 
 # Scope for accessing user's playlists
-scope = "playlist-modify-private,user-library-modify,user-library-read"  # playlist-read-collaborative"
+scope = "playlist-modify-private,user-library-modify,user-library-read,playlist-modify-public"  # playlist-read-collaborative"
 
 # Authenticate and create a Spotify client
 sp = spotipy.Spotify(

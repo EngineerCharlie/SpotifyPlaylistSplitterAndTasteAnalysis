@@ -5,7 +5,6 @@ import networkx as nx
 import time
 
 
-# Function to get all tracks in a playlist
 def get_playlist_track_popularities(sp, playlist):
 
     def get_track_key(track):
@@ -14,56 +13,49 @@ def get_playlist_track_popularities(sp, playlist):
         return (track_name, track_artists)
 
     track_set = set()
-    track_popularity_dict, track_name_id_dict, track_id_name_dict = {}, {}, {}
+    track_popularity_dict = {}
+    track_name_id_dict = {}
+    track_id_name_dict = {}
+    track_id_list = []
 
     results = sp.playlist_tracks(playlist)
-    track_set.update([get_track_key(item["track"]) for item in results["items"]])
-    track_popularity_dict.update(
-        {item["track"]["id"]: item["track"]["popularity"] for item in results["items"]}
-    )
-    track_name_id_dict.update(
-        {get_track_key(item["track"]): item["track"]["id"] for item in results["items"]}
-    )
-    track_id_name_dict.update(
-        {item["track"]["id"]: get_track_key(item["track"]) for item in results["items"]}
-    )
-    while results["next"]:
-        results = sp.next(results)
-        track_popularity_dict.update(
-            {
-                item["track"]["id"]: item["track"]["popularity"]
-                for item in results["items"]
-            }
-        )
-        track_set.update([get_track_key(item["track"]) for item in results["items"]])
-        track_name_id_dict.update(
-            {
-                get_track_key(item["track"]): item["track"]["id"]
-                for item in results["items"]
-            }
-        )
-        track_id_name_dict.update(
-            {
-                item["track"]["id"]: get_track_key(item["track"])
-                for item in results["items"]
-            }
-        )
-    if len(track_set) != track_popularity_dict:
+
+    while results:
+        for item in results["items"]:
+            track = item["track"]
+            track_key = get_track_key(track)
+            track_id = track["id"]
+
+            track_set.add(track_key)
+            track_popularity_dict[track_id] = track["popularity"]
+            track_name_id_dict[track_key] = track_id
+            track_id_name_dict[track_id] = track_key
+            track_id_list.append(track_id)
+        results = sp.next(results) if results["next"] else None
+
+    # Remove duplicates from the popularity dictionary
+    if len(track_set) != len(track_popularity_dict):
         new_track_popularity_dict = {
             track_name_id_dict[track_key]: track_popularity_dict[
                 track_name_id_dict[track_key]
             ]
             for track_key in track_set
         }
+
+        # Identify and print removed tracks
         ids_removed = set(track_popularity_dict.keys()) - set(
             new_track_popularity_dict.keys()
         )
-        for id in ids_removed:
-            print(track_id_name_dict[id])
+        for track_id in ids_removed:
+            track_name, track_artists = track_id_name_dict[track_id]
+            print(f"Removed track: {track_name} by {track_artists}")
+
         track_popularity_dict = new_track_popularity_dict
+
     if len(track_popularity_dict) == 1:
-        raise Exception("Need more than 1  track to sort")
-    return track_popularity_dict
+        raise Exception("Need more than 1 track to sort")
+
+    return track_popularity_dict, track_id_list
 
 
 def get_track_audio_features(
@@ -249,22 +241,25 @@ def solve_tsp(distance_matrix: pd.DataFrame):
         print(distance_matrix)
 
 
-def update_playlist(sp: SpotipyBootstrap.spotipy.Spotify, playlist_id, old_tracks, new_tracks):
-    sp.playlist_remove_all_occurrences_of_items(playlist_id,old_tracks)
+def update_playlist(
+    sp: SpotipyBootstrap.spotipy.Spotify, playlist_id, old_tracks, new_tracks
+):
+    assert len(new_tracks) != 0
+    sp.playlist_remove_all_occurrences_of_items(playlist_id, old_tracks)
     while new_tracks:
         track_slice = []
         try:
             for i in range(50):
                 track_slice.append(new_tracks.pop())
-        except KeyError:
+
+        except IndexError:
             pass
         sp.playlist_add_items(playlist_id, track_slice)
 
 
-
 def reorder_playlist(playlist_id: str):
     # Fetch tracks for playlist
-    track_popularity_dict = get_playlist_track_popularities(
+    track_popularity_dict, original_tracks = get_playlist_track_popularities(
         SpotipyBootstrap.sp, playlist_id
     )
     audio_features_matrix = get_track_audio_features(
@@ -275,307 +270,17 @@ def reorder_playlist(playlist_id: str):
     track_ids = track_matching_matrix.index
     track_matching_matrix = track_matching_matrix.to_numpy()
     track_ordering = solve_tsp(track_matching_matrix)
-    track_ordering = [track_ids[track_id] for track_id in track_ordering]
+    track_ordering = [track_ids[track_id] for track_id in track_ordering[:-1]]
     end_time = time.time()
     # Calculate and print the elapsed time
     elapsed_time = end_time - start_time
     print(f"New order calculated in {elapsed_time:.4f} seconds")
-    print(track_ordering[:-1])
+    print(track_ordering)
+    update_playlist(SpotipyBootstrap.sp, playlist_id, original_tracks, track_ordering)
 
 
 if __name__ == "__main__":
     reorder_playlist("3Ilo6cyMtDAPt332MzqIAG")
     # 300 song playlist 6Id3z1jonSXh0KNwjF2gBG
     # 13 song playlist 3Ilo6cyMtDAPt332MzqIAG
-    # 2 song double playlist 5GJrAohQqT6afu6XHIwf3q
-
-WEIGHTING = {
-    "danceability_dif": 6,
-    "energy_dif": 20,
-    "key_dif": 4,
-    "loudness_dif": 10,
-    "speechiness_dif": 4,
-    "acousticness_dif": 10,
-    "instrumentalness_dif": 5,
-    "liveness_dif": 2,
-    "valence_dif": 13,
-    "tempo_dif": 7,
-}
-track_popularity_dict = {
-    "1pYPgA8XdHFQS15HPB41MH": 39,
-    "5MyQwsO0ktOmdRxg9bmFeW": 23,
-    "2fmXnPfzguSp3zKDibCBgv": 48,
-    "0nN2D5xwVtLrgUw0TIQ5CI": 43,
-    "6jY7UcNWda03nyJ5XiqlYt": 39,
-    "5IIybI1oiOCY3DRUrpQ7zA": 0,
-    "2zQl59dZMzwhrmeSBEgiXY": 52,
-    "6wnziKyjH3rNyzP6H4ziO2": 0,
-    "1EWPMNHfdVNJwBpG9BcxXB": 26,
-    "1YQWosTIljIvxAgHWTp7KP": 68,
-    "771I4XsOUGOeuIdeVh0IsR": 22,
-    "2VUo8O3ymKRYNgj97ZG2kM": 50,
-    "5xRP5iyVdGglqlY4Vcjhkx": 60,
-}
-
-track_audio_features = [
-    {
-        "danceability": 0.454,
-        "energy": 0.26,
-        "key": 8,
-        "loudness": -13.193,
-        "mode": 0,
-        "speechiness": 0.0401,
-        "acousticness": 0.539,
-        "instrumentalness": 0.00078,
-        "liveness": 0.0675,
-        "valence": 0.598,
-        "tempo": 174.322,
-        "type": "audio_features",
-        "id": "1YQWosTIljIvxAgHWTp7KP",
-        "uri": "spotify:track:1YQWosTIljIvxAgHWTp7KP",
-        "track_href": "https://api.spotify.com/v1/tracks/1YQWosTIljIvxAgHWTp7KP",
-        "analysis_url": "https://api.spotify.com/v1/audio-analysis/1YQWosTIljIvxAgHWTp7KP",
-        "duration_ms": 324133,
-        "time_signature": 5,
-    },
-    {
-        "danceability": 0.584,
-        "energy": 0.0789,
-        "key": 0,
-        "loudness": -12.905,
-        "mode": 1,
-        "speechiness": 0.051,
-        "acousticness": 0.884,
-        "instrumentalness": 0.00705,
-        "liveness": 0.0876,
-        "valence": 0.319,
-        "tempo": 70.886,
-        "type": "audio_features",
-        "id": "5IIybI1oiOCY3DRUrpQ7zA",
-        "uri": "spotify:track:5IIybI1oiOCY3DRUrpQ7zA",
-        "track_href": "https://api.spotify.com/v1/tracks/5IIybI1oiOCY3DRUrpQ7zA",
-        "analysis_url": "https://api.spotify.com/v1/audio-analysis/5IIybI1oiOCY3DRUrpQ7zA",
-        "duration_ms": 206827,
-        "time_signature": 4,
-    },
-    {
-        "danceability": 0.724,
-        "energy": 0.414,
-        "key": 1,
-        "loudness": -11.19,
-        "mode": 1,
-        "speechiness": 0.0588,
-        "acousticness": 0.262,
-        "instrumentalness": 0.111,
-        "liveness": 0.0785,
-        "valence": 0.719,
-        "tempo": 146.939,
-        "type": "audio_features",
-        "id": "2zQl59dZMzwhrmeSBEgiXY",
-        "uri": "spotify:track:2zQl59dZMzwhrmeSBEgiXY",
-        "track_href": "https://api.spotify.com/v1/tracks/2zQl59dZMzwhrmeSBEgiXY",
-        "analysis_url": "https://api.spotify.com/v1/audio-analysis/2zQl59dZMzwhrmeSBEgiXY",
-        "duration_ms": 388960,
-        "time_signature": 4,
-    },
-    {
-        "danceability": 0.439,
-        "energy": 0.543,
-        "key": 11,
-        "loudness": -13.35,
-        "mode": 0,
-        "speechiness": 0.0975,
-        "acousticness": 0.654,
-        "instrumentalness": 9.79e-06,
-        "liveness": 0.0937,
-        "valence": 0.671,
-        "tempo": 146.704,
-        "type": "audio_features",
-        "id": "5xRP5iyVdGglqlY4Vcjhkx",
-        "uri": "spotify:track:5xRP5iyVdGglqlY4Vcjhkx",
-        "track_href": "https://api.spotify.com/v1/tracks/5xRP5iyVdGglqlY4Vcjhkx",
-        "analysis_url": "https://api.spotify.com/v1/audio-analysis/5xRP5iyVdGglqlY4Vcjhkx",
-        "duration_ms": 622000,
-        "time_signature": 4,
-    },
-    {
-        "danceability": 0.734,
-        "energy": 0.64,
-        "key": 5,
-        "loudness": -8.471,
-        "mode": 0,
-        "speechiness": 0.0661,
-        "acousticness": 0.00606,
-        "instrumentalness": 0.37,
-        "liveness": 0.0602,
-        "valence": 0.868,
-        "tempo": 103.812,
-        "type": "audio_features",
-        "id": "2fmXnPfzguSp3zKDibCBgv",
-        "uri": "spotify:track:2fmXnPfzguSp3zKDibCBgv",
-        "track_href": "https://api.spotify.com/v1/tracks/2fmXnPfzguSp3zKDibCBgv",
-        "analysis_url": "https://api.spotify.com/v1/audio-analysis/2fmXnPfzguSp3zKDibCBgv",
-        "duration_ms": 541827,
-        "time_signature": 4,
-    },
-    {
-        "danceability": 0.327,
-        "energy": 0.372,
-        "key": 3,
-        "loudness": -13.696,
-        "mode": 1,
-        "speechiness": 0.0542,
-        "acousticness": 0.865,
-        "instrumentalness": 0.835,
-        "liveness": 0.153,
-        "valence": 0.38,
-        "tempo": 66.036,
-        "type": "audio_features",
-        "id": "1EWPMNHfdVNJwBpG9BcxXB",
-        "uri": "spotify:track:1EWPMNHfdVNJwBpG9BcxXB",
-        "track_href": "https://api.spotify.com/v1/tracks/1EWPMNHfdVNJwBpG9BcxXB",
-        "analysis_url": "https://api.spotify.com/v1/audio-analysis/1EWPMNHfdVNJwBpG9BcxXB",
-        "duration_ms": 264933,
-        "time_signature": 4,
-    },
-    {
-        "danceability": 0.766,
-        "energy": 0.381,
-        "key": 10,
-        "loudness": -14.456,
-        "mode": 0,
-        "speechiness": 0.0805,
-        "acousticness": 0.18,
-        "instrumentalness": 0.0844,
-        "liveness": 0.48,
-        "valence": 0.634,
-        "tempo": 98.862,
-        "type": "audio_features",
-        "id": "0nN2D5xwVtLrgUw0TIQ5CI",
-        "uri": "spotify:track:0nN2D5xwVtLrgUw0TIQ5CI",
-        "track_href": "https://api.spotify.com/v1/tracks/0nN2D5xwVtLrgUw0TIQ5CI",
-        "analysis_url": "https://api.spotify.com/v1/audio-analysis/0nN2D5xwVtLrgUw0TIQ5CI",
-        "duration_ms": 452573,
-        "time_signature": 4,
-    },
-    {
-        "danceability": 0.591,
-        "energy": 0.991,
-        "key": 6,
-        "loudness": -4.148,
-        "mode": 1,
-        "speechiness": 0.111,
-        "acousticness": 0.00261,
-        "instrumentalness": 0.756,
-        "liveness": 0.0567,
-        "valence": 0.505,
-        "tempo": 142.995,
-        "type": "audio_features",
-        "id": "6wnziKyjH3rNyzP6H4ziO2",
-        "uri": "spotify:track:6wnziKyjH3rNyzP6H4ziO2",
-        "track_href": "https://api.spotify.com/v1/tracks/6wnziKyjH3rNyzP6H4ziO2",
-        "analysis_url": "https://api.spotify.com/v1/audio-analysis/6wnziKyjH3rNyzP6H4ziO2",
-        "duration_ms": 192493,
-        "time_signature": 4,
-    },
-    {
-        "danceability": 0.65,
-        "energy": 0.496,
-        "key": 7,
-        "loudness": -13.869,
-        "mode": 1,
-        "speechiness": 0.115,
-        "acousticness": 0.0723,
-        "instrumentalness": 0.88,
-        "liveness": 0.119,
-        "valence": 0.615,
-        "tempo": 116.868,
-        "type": "audio_features",
-        "id": "2VUo8O3ymKRYNgj97ZG2kM",
-        "uri": "spotify:track:2VUo8O3ymKRYNgj97ZG2kM",
-        "track_href": "https://api.spotify.com/v1/tracks/2VUo8O3ymKRYNgj97ZG2kM",
-        "analysis_url": "https://api.spotify.com/v1/audio-analysis/2VUo8O3ymKRYNgj97ZG2kM",
-        "duration_ms": 119867,
-        "time_signature": 4,
-    },
-    {
-        "danceability": 0.743,
-        "energy": 0.352,
-        "key": 9,
-        "loudness": -17.225,
-        "mode": 0,
-        "speechiness": 0.061,
-        "acousticness": 0.146,
-        "instrumentalness": 0.104,
-        "liveness": 0.0585,
-        "valence": 0.722,
-        "tempo": 108.785,
-        "type": "audio_features",
-        "id": "6jY7UcNWda03nyJ5XiqlYt",
-        "uri": "spotify:track:6jY7UcNWda03nyJ5XiqlYt",
-        "track_href": "https://api.spotify.com/v1/tracks/6jY7UcNWda03nyJ5XiqlYt",
-        "analysis_url": "https://api.spotify.com/v1/audio-analysis/6jY7UcNWda03nyJ5XiqlYt",
-        "duration_ms": 350600,
-        "time_signature": 4,
-    },
-    {
-        "danceability": 0.628,
-        "energy": 0.429,
-        "key": 7,
-        "loudness": -8.772,
-        "mode": 0,
-        "speechiness": 0.0454,
-        "acousticness": 0.763,
-        "instrumentalness": 0.195,
-        "liveness": 0.146,
-        "valence": 0.698,
-        "tempo": 135.145,
-        "type": "audio_features",
-        "id": "5MyQwsO0ktOmdRxg9bmFeW",
-        "uri": "spotify:track:5MyQwsO0ktOmdRxg9bmFeW",
-        "track_href": "https://api.spotify.com/v1/tracks/5MyQwsO0ktOmdRxg9bmFeW",
-        "analysis_url": "https://api.spotify.com/v1/audio-analysis/5MyQwsO0ktOmdRxg9bmFeW",
-        "duration_ms": 400840,
-        "time_signature": 4,
-    },
-    {
-        "danceability": 0.597,
-        "energy": 0.196,
-        "key": 2,
-        "loudness": -17.343,
-        "mode": 1,
-        "speechiness": 0.028,
-        "acousticness": 0.843,
-        "instrumentalness": 0.847,
-        "liveness": 0.103,
-        "valence": 0.164,
-        "tempo": 109.695,
-        "type": "audio_features",
-        "id": "771I4XsOUGOeuIdeVh0IsR",
-        "uri": "spotify:track:771I4XsOUGOeuIdeVh0IsR",
-        "track_href": "https://api.spotify.com/v1/tracks/771I4XsOUGOeuIdeVh0IsR",
-        "analysis_url": "https://api.spotify.com/v1/audio-analysis/771I4XsOUGOeuIdeVh0IsR",
-        "duration_ms": 258751,
-        "time_signature": 4,
-    },
-    {
-        "danceability": 0.62,
-        "energy": 0.705,
-        "key": 8,
-        "loudness": -10.179,
-        "mode": 1,
-        "speechiness": 0.0404,
-        "acousticness": 0.151,
-        "instrumentalness": 0.0802,
-        "liveness": 0.107,
-        "valence": 0.907,
-        "tempo": 93.018,
-        "type": "audio_features",
-        "id": "1pYPgA8XdHFQS15HPB41MH",
-        "uri": "spotify:track:1pYPgA8XdHFQS15HPB41MH",
-        "track_href": "https://api.spotify.com/v1/tracks/1pYPgA8XdHFQS15HPB41MH",
-        "analysis_url": "https://api.spotify.com/v1/audio-analysis/1pYPgA8XdHFQS15HPB41MH",
-        "duration_ms": 379400,
-        "time_signature": 4,
-    },
-]
+    # 3 song double playlist 5GJrAohQqT6afu6XHIwf3q
