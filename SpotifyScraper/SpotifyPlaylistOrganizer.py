@@ -104,7 +104,7 @@ def song_matching(track_audio_features: pd.DataFrame):
     track_ids = track_audio_features.index
     num_tracks = len(track_ids)
     WEIGHTING = {
-        "danceability_dif": 6,
+        "danceability_dif": 12,
         "energy_dif": 20,
         "key_dif": 4,
         "loudness_dif": 10,
@@ -112,7 +112,7 @@ def song_matching(track_audio_features: pd.DataFrame):
         "acousticness_dif": 10,
         "instrumentalness_dif": 5,
         "liveness_dif": 2,
-        "valence_dif": 13,
+        "valence_dif": 16,
         "tempo_dif": 7,
     }
     # Convert track features to NumPy arrays
@@ -283,6 +283,7 @@ def reorder_playlist(playlist_id: str):
     playlist_backup_id = SpotipyBootstrap.sp.user_playlist_create(
         SpotipyBootstrap.SpotifySecrets.SPOTIFY_USERNAME, "backup"
     )["id"]
+    print(playlist_backup_id)
     update_playlist(SpotipyBootstrap.sp, playlist_backup_id, [], original_tracks.copy())
     update_playlist(SpotipyBootstrap.sp, playlist_id, original_tracks, track_ordering)
     SpotipyBootstrap.sp.user_playlist_unfollow(
@@ -291,7 +292,7 @@ def reorder_playlist(playlist_id: str):
 
 
 if __name__ == "__main__":
-    reorder_playlist("3O4xCt4hBP0uDoQS5C1izu")
+    reorder_playlist("2kpWO8oYRUlV9pbziDWWXM")
     # 300 song playlist 6Id3z1jonSXh0KNwjF2gBG
     # 13 song playlist 3Ilo6cyMtDAPt332MzqIAG
     # 3 song double playlist 5GJrAohQqT6afu6XHIwf3q
