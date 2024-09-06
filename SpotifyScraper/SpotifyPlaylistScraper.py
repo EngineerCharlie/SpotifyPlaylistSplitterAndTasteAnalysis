@@ -57,7 +57,7 @@ def get_playlist_data(sp: SpotipyBootstrap.spotipy.Spotify, playlist_id):
                 artist_names = ", ".join(
                     [artist["name"] for artist in track["artists"]]
                 )
-                tracks.append({"track_name": track_name, "artist_names": artist_names})
+                tracks.append((track_name, artist_names))
             if playlist_info["tracks"]["next"] is not None:
                 time.sleep(api_delay_modified)
                 playlist_info["tracks"] = sp.next(playlist_info["tracks"])
@@ -91,7 +91,7 @@ def main():
             continue
 
         # Fetch the playlist data
-        print(f"Fetching data for playlist {playlist_id}, t = {time.ctime()}...")
+        print(f"Fetching data for playlist {playlist_id}, {time.ctime()}...")
         playlist_info = get_playlist_data(sp, playlist_id)
 
         if playlist_info:
