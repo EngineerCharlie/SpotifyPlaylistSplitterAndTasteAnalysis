@@ -7,7 +7,7 @@ import SpotipyBootstrap as SpotipyBootstrap
 PLAYLISTS_TO_SCRAPE_FILE = "SpotifyScraper/spot_data_playlist_ids.csv"
 SCRAPED_PLAYLISTS_FILE = "SpotifyScraper/spot_data_playlist_ids_scraped.csv"
 OUTPUT_JSON_FILE = "SpotifyScraper/spotify_playlists_data.json"
-API_DELAY_BASE = 35  # Time delay in seconds between API requests
+API_DELAY_BASE = 30  # Time delay in seconds between API requests
 api_delay_modified = 45
 
 
@@ -34,7 +34,7 @@ def add_set_to_csv(filename, data_set):
 
 def set_api_delay(number_of_tracks_in_response):
     global api_delay_modified
-    api_delay_modified = 10 + API_DELAY_BASE * number_of_tracks_in_response / 100
+    api_delay_modified = 7 + API_DELAY_BASE * number_of_tracks_in_response / 100
 
 
 # Function to fetch playlist details from Spotify
@@ -107,7 +107,10 @@ def main():
         # Wait for a specified delay between API calls
         print(f"Waiting for {api_delay_modified} seconds...")
         time.sleep(api_delay_modified)
-    print("Scraping process completed!")
+    print(
+        "Scraping process completed! It's fucking done! This was started august 15th and it's only now compelte!!!!!!"
+    )
+
     with open(OUTPUT_JSON_FILE, mode="a", encoding="utf-8") as json_file:
         json_file.write("\n]", json_file)
 
