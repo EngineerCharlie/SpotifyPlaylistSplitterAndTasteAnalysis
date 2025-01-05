@@ -6,6 +6,7 @@ import SpotipyBootstrap as SpotipyBootstrap
 # File paths for the CSV files
 PLAYLISTS_TO_SCRAPE_FILE = "SpotifyScraper/spot_data_playlist_ids.csv"
 SCRAPED_PLAYLISTS_FILE = "SpotifyScraper/spot_data_playlist_ids_scraped.csv"
+PLAYLISTS_TOO_LONG_FILE = "SpotifyScraper/spot_data_playlist_ids_too_long.csv"
 OUTPUT_JSON_FILE = "SpotifyScraper/spotify_playlists_data.json"
 API_DELAY_BASE = 30  # Time delay in seconds between API requests
 api_delay_modified = 45
@@ -46,6 +47,14 @@ def get_playlist_data(sp: SpotipyBootstrap.spotipy.Spotify, playlist_id):
         set_api_delay(len(playlist_info["tracks"]["items"]))
         if playlist_info["tracks"]["total"] <= 1:
             return None
+        elif playlist_info["tracks"]["total"] > 600:
+            return {
+                "playlist_id": playlist_id,
+                "playlist_name": "ERROR TOO LONG",
+                "user_id": "ERROR TOO LONG",
+                "tracks": [],
+            }
+
         playlist_name = playlist_info["name"]
         user_id = playlist_info["owner"]["id"]
         tracks = []
@@ -93,11 +102,18 @@ def main():
         # Fetch the playlist data
         print(f"Fetching data for playlist {playlist_id}, {time.ctime()}...")
         playlist_info = get_playlist_data(sp, playlist_id)
+        scraped_playlist_ids.add(playlist_id)
+        add_set_to_csv(SCRAPED_PLAYLISTS_FILE, [playlist_id])
 
         if playlist_info:
+            if (
+                playlist_info["playlist_name"] == "ERROR TOO LONG"
+                and playlist_info["user_id"] == "ERROR TOO LONG"
+            ):
+                print(f"Playlist too long, skipping")
+                add_set_to_csv(PLAYLISTS_TOO_LONG_FILE, [playlist_id])
+                continue
             # Append the playlist ID to the scraped playlist CSV
-            scraped_playlist_ids.add(playlist_id)
-            add_set_to_csv(SCRAPED_PLAYLISTS_FILE, [playlist_id])
 
             # Save the playlist data to the JSON file
             with open(OUTPUT_JSON_FILE, mode="a", encoding="utf-8") as json_file:

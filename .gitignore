@@ -180,3 +180,4 @@ SpotifyScraper/spot_data_playlist_ids copy.csv
 SpotifyScraper/spot_data_users_to_explore copy.csv
 SpotifyScraper/spotify_playlists_data.json
 SpotifyScraper/spot_data_playlist_ids_scraped.csv
+SpotifyScraper/spot_data_playlist_ids_too_long.csv
