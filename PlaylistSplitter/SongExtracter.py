@@ -2,8 +2,8 @@ import json, os, csv, re
 from rapidfuzz import fuzz, process
 
 base_dir = os.path.dirname(__file__)  # .../SpotifyPlaylistSplitter/PlaylistSplitter
-filename = "spotify_playlists_data_1.json"
-# filename = "spotify_playlists_data_backup_2025_12_10.json"
+# filename = "spotify_playlists_data_1.json"
+filename = "spotify_playlists_data_backup_2025_12_10.json"
 json_path = os.path.join(base_dir, "..", "SpotifyScraper", filename)
 json_path = os.path.abspath(json_path)
 library_path = os.path.join(base_dir, "..", "data", "library.csv")
@@ -63,41 +63,23 @@ def extract_songs_from_csv(csv_path: str):
             title = row.get("Title", "").strip()
 
             if not title or not artist_field:
+                print(title, artist_field)
                 continue
 
             # Split multiple artists by semicolon, normalize whitespace
             artists = [a.strip() for a in artist_field.split(";")]
 
-            for artist in artists:
-                unique_songs.add((title, artist))
+            # for artist in artists:
+            unique_songs.add((title, ",".join(artists)))
 
     return unique_songs
 
 
-# ----------------------
-# Normalization functions
-# ----------------------
-
-
 def normalize_text(s: str) -> str:
     s = s.lower()
-    # Remove punctuation
     s = re.sub(r"[^\w\s]", "", s)
-    # Collapse spaces
     s = re.sub(r"\s+", " ", s)
     return s.strip()
-
-
-def normalize_artists(artists_raw: str) -> list:
-    # Split on ',' or ';'
-    parts = re.split(r"[;,]", artists_raw)
-    return [normalize_text(p) for p in parts if p.strip()]
-
-
-def canonical_key(title: str, artists: list) -> tuple:
-    norm_title = normalize_text(title)
-    norm_artists = sorted(normalize_artists(",".join(artists)))
-    return (norm_title, tuple(norm_artists))
 
 
 # ----------------------
@@ -106,75 +88,65 @@ def canonical_key(title: str, artists: list) -> tuple:
 
 
 def fuzzy_match_songs(
-    playlist_tracks, library_tracks, title_thresh=90, artist_thresh=90
+    songs_extracted, songs_library, title_thresh=90, artist_thresh=90
 ):
-    """
-    Match playlist_tracks to library_tracks using fuzzy string matching.
+    # library_tracks: list of (title, artist_raw)
+    library_index = {}
 
-    playlist_tracks & library_tracks: list of (title, artist_raw) tuples
-    title_thresh & artist_thresh: minimum fuzzy ratio for match
-    """
+    for title, artist_raw in songs_extracted:
+        norm_title = normalize_text(title)
+        norm_artists = tuple(
+            sorted([normalize_text(a.strip()) for a in re.split(r"[;,]", artist_raw)])
+        )
+
+        # Use normalized title as key
+        if norm_title not in library_index:
+            library_index[norm_title] = []
+
+        library_index[norm_title].append(
+            {"title": title, "artists": artist_raw, "norm_artists": norm_artists}
+        )
+
     matches = []
     unmatched_playlist = []
 
-    # Pre-normalize library for faster matching
-    library_norm = []
-    for title, artist_raw in library_tracks:
-        artists = [a.strip() for a in re.split(r"[;,]", artist_raw)]
-        norm_title = normalize_text(title)
-        norm_artists = sorted(normalize_artists(",".join(artists)))
-        library_norm.append(
-            {
-                "original": (title, artist_raw),
-                "title": norm_title,
-                "artists": norm_artists,
-            }
+    for p_title, p_artist_raw in songs_library:
+        norm_p_title = normalize_text(p_title)
+        norm_p_artists = tuple(
+            sorted([normalize_text(a.strip()) for a in p_artist_raw.split(",")])
         )
 
-    for p_title, p_artist_raw in playlist_tracks:
-        p_artists = [a.strip() for a in p_artist_raw.split(",")]
-        p_norm_title = normalize_text(p_title)
-        p_norm_artists = sorted(normalize_artists(",".join(p_artists)))
+        # Get candidate library tracks (exact title match)
+        candidates = library_index.get(norm_p_title, [])
 
         best_match = None
         best_score = 0
 
-        for lib in library_norm:
-            # Compare title
-            title_score = fuzz.ratio(p_norm_title, lib["title"])
-            # Compare artists: take average fuzzy ratio across all artists
-            artist_scores = []
-            for pa in p_norm_artists:
-                # Match against best library artist
-                a_score = max(fuzz.ratio(pa, la) for la in lib["artists"])
-                artist_scores.append(a_score)
-            if artist_scores:
-                artist_score = sum(artist_scores) / len(artist_scores)
-            else:
-                artist_score = 0
+        for lib in candidates:
+            # Fuzzy artist match
+            artist_score = fuzz.token_sort_ratio(
+                " ".join(norm_p_artists), " ".join(lib["norm_artists"])
+            )
+            if artist_score > best_score:
+                best_score = artist_score
+                best_match = (p_title, p_artist_raw, lib["title"], lib["artists"])
 
-            # Combined score: simple min threshold
-            if title_score >= title_thresh and artist_score >= artist_thresh:
-                combined_score = (title_score + artist_score) / 2
-                if combined_score > best_score:
-                    best_score = combined_score
-                    best_match = lib["original"]
-
-        if best_match:
-            matches.append(((p_title, p_artist_raw), best_match))
+        if best_match and best_score >= 90:  # threshold adjustable
+            matches.append(best_match)
         else:
             unmatched_playlist.append((p_title, p_artist_raw))
-
     return matches, unmatched_playlist
 
 
 if __name__ == "__main__":
     songs_extracted = extract_unique_songs_json(json_path)
     print(len(songs_extracted), "unique songs extracted from playlists.")
-    # songs_library = extract_songs_from_csv(library_path)
-    # matches, unmatched = fuzzy_match_songs(list(songs_extracted), list(songs_library))
+    songs_library = extract_songs_from_csv(library_path)
+    print(len(songs_library), "unique songs extracted from library.")
+    matches, unmatched = fuzzy_match_songs(list(songs_extracted), list(songs_library))
 
-    # print("Matched tracks:", len(matches))
+    print("Matched tracks:", len(matches))
+    print(unmatched)
     # for playlist_song, library_song in matches:
     #     print("Playlist:", playlist_song, "-> Library:", library_song)
 
