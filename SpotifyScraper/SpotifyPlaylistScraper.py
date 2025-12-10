@@ -81,6 +81,7 @@ def get_playlist_data(sp: SpotipyBootstrap.spotipy.Spotify, playlist_id):
         }
     except Exception as e:
         print(f"Error fetching data for playlist {playlist_id}: {e}")
+        set_api_delay(API_DELAY_BASE)
         return None
 
 
