@@ -4,7 +4,7 @@ from collections import defaultdict
 
 base_dir = os.path.dirname(__file__)  # .../SpotifyPlaylistSplitter/PlaylistSplitter
 filename = "spotify_playlists_data_1.json"
-# filename = "spotify_playlists_data_backup_2025_12_10.json"
+filename = "spotify_playlists_data_backup_2025_12_10.json"
 library_path = os.path.join(base_dir, "..", "data", "library.csv")
 unmatched_path = os.path.join(base_dir, "..", "data", "unmatched_songs_1.csv")
 json_path = os.path.join(base_dir, "..", "data", filename)
@@ -217,6 +217,7 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
             if lib_item["artist_set"] == db_item["artist_set"]:
                 record(lib_item, db_item, 100, 100)
                 break
+    print(f"After Stage 1, matched: {len(matched)}, unmatched: {len(unmatched)}")
 
     # -------------------------------------------------------------------
     # STAGE 2 — HARD ARTIST MATCH + FUZZY TITLE
@@ -237,6 +238,7 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
                     if title_score >= threshold_title:
                         record(lib_item, db_item, 100, title_score)
                         break
+    print(f"After Stage 2, matched: {len(matched)}, unmatched: {len(unmatched)}")
 
     # -------------------------------------------------------------------
     # STAGE 3 — HARD TITLE MATCH + FUZZY ARTIST
@@ -253,35 +255,89 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
             if artist_score >= threshold_artist:
                 record(lib_item, db_item, artist_score, 100)
                 break
+    print(f"After Stage 3, matched: {len(matched)}, unmatched: {len(unmatched)}")
 
-    # -------------------------------------------------------------------
-    # STAGE 4 — FULL FUZZY (ARTIST + TITLE)
-    # -------------------------------------------------------------------
-    for lib_item in lib:
+    # ----------------------------
+    # STAGE 4 — FULL FUZZY (ARTIST + TITLE) - REAL FUZZY
+    # ----------------------------
+
+    # Prepare artist key list and a cheap blocking index to reduce comparisons
+    db_artist_keys = list(db_by_artist.keys())
+    db_artist_index = defaultdict(list)
+    for k in db_artist_keys:
+        if not k:
+            continue
+        key = (k[0], len(k) // 3)  # first char + length bucket
+        db_artist_index[key].append(k)
+    DEBUG = True  # overall stage debug
+    DEBUG_VERBOSE = False  # enable only if you want per-key noisy logs
+    DEBUG_EVERY = 1  # progress indicator frequency
+
+
+    # Main full-fuzzy loop
+    for num, lib_item in enumerate(lib):
+        # Progress summary
+        if DEBUG and (num % DEBUG_EVERY == 0):
+            print(
+                f"[Stage 4] Processing {num+1}/{len(lib)} "
+                f"(matched={len(matched)}, unmatched={len(unmatched)})"
+            )
+
         if (lib_item["title"], lib_item["artists_raw"]) not in unmatched:
             continue
 
         best = None
-        print("Matching (full fuzzy):", lib_item["title"], lib_item["artists_raw"])
-        for a in lib_item["artist_set"]:
-            print(a)
-            for db_item in db_by_artist.get(a, []):
-                print(db_item, " ".join(lib_item["artist_set"]))
-                artist_score = fuzz.token_set_ratio(
-                    " ".join(lib_item["artist_set"]), " ".join(db_item["artist_set"])
-                )
-                print("Artist score:", artist_score)
-                if artist_score < threshold_artist:
-                    continue
 
+        lib_artist_str = " ".join(sorted(lib_item["artist_set"]))
+
+        # Cheap block first
+        block_key = (
+            lib_artist_str[0] if lib_artist_str else "",
+            len(lib_artist_str) // 3,
+        )
+        candidate_artist_keys = db_artist_index.get(block_key, None)
+
+        # If block produced nothing, use full list
+        block_used = candidate_artist_keys is not None and len(candidate_artist_keys) > 0
+        if not block_used:
+            candidate_artist_keys = db_artist_keys
+
+        if DEBUG:
+            print(
+                f"[Stage 4] '{lib_item['title']}' by '{lib_item['artists_raw']}' | "
+                f"block_used={block_used} | candidate_keys={len(candidate_artist_keys)}"
+            )
+
+        # Count how many artist keys survive fuzzy artist threshold
+        artist_candidates = 0
+
+        # Evaluate fuzzy artist matches among candidate artist keys
+        for artist_key in candidate_artist_keys:
+            artist_score = fuzz.token_set_ratio(lib_artist_str, artist_key)
+
+            if DEBUG_VERBOSE:
+                print(f"    artist_key='{artist_key}' => artist_score={artist_score}")
+
+            if artist_score < threshold_artist:
+                continue
+
+            artist_candidates += 1
+
+            # For any artist_key that passes, scan db items under key
+            for db_item in db_by_artist.get(artist_key, []):
                 title_score = fuzz.token_set_ratio(
                     lib_item["norm_title"], db_item["norm_title"]
                 )
+
+                if DEBUG_VERBOSE:
+                    print(
+                        f"        db_item='{db_item['title']}' => title_score={title_score}"
+                    )
+
                 if title_score < threshold_title:
                     continue
 
                 total = artist_score + title_score
-
                 if best is None or total > best["total"]:
                     best = {
                         "lib_item": lib_item,
@@ -291,13 +347,59 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
                         "total": total,
                     }
 
+        if DEBUG:
+            print(
+                f"[Stage 4] Artist candidates after threshold: {artist_candidates} "
+                f"(block_used={block_used})"
+            )
+
+        # If nothing matched, global fallback
+        if best is None:
+            if DEBUG:
+                print("[Stage 4] No match from block. Running global fallback scan.")
+
+            for artist_key in db_artist_keys:
+                artist_score = fuzz.token_set_ratio(lib_artist_str, artist_key)
+                if artist_score < threshold_artist:
+                    continue
+
+                for db_item in db_by_artist.get(artist_key, []):
+                    title_score = fuzz.token_set_ratio(
+                        lib_item["norm_title"], db_item["norm_title"]
+                    )
+                    if title_score < threshold_title:
+                        continue
+
+                    total = artist_score + title_score
+                    if best is None or total > best["total"]:
+                        best = {
+                            "lib_item": lib_item,
+                            "db_item": db_item,
+                            "artist_score": round(artist_score, 2),
+                            "title_score": round(title_score, 2),
+                            "total": total,
+                        }
+
+        # Record best if found
         if best:
+            if DEBUG:
+                print(
+                    f"[Stage 4] MATCH FOUND: "
+                    f"{best['lib_item']['title']}  →  {best['db_item']['title']} "
+                    f"(artist={best['artist_score']}, title={best['title_score']})"
+                )
+
             record(
                 best["lib_item"],
                 best["db_item"],
                 best["artist_score"],
                 best["title_score"],
             )
+        else:
+            if DEBUG:
+                print(
+                    f"[Stage 4] NO MATCH FOUND for {lib_item['title']} / {lib_item['artists_raw']}"
+                )
 
     return matched, list(unmatched)
 
@@ -333,16 +435,7 @@ if __name__ == "__main__":
 
         for m in matches:
             print(m)
-            writer.writerow(
-                [
-                    m[0],
-                    m[1],
-                    m[2],
-                    m[3],
-                    m[4],
-                    m[5]
-                ]
-            )
+            writer.writerow([m[0], m[1], m[2], m[3], m[4], m[5]])
 
     # Unmatched writer remains the same
     unmatched_path = os.path.join(base_dir, "..", "data", "unmatched_songs.csv")
