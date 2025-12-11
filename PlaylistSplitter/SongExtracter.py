@@ -2,8 +2,8 @@ import json, os, csv, re
 from rapidfuzz import fuzz, process
 
 base_dir = os.path.dirname(__file__)  # .../SpotifyPlaylistSplitter/PlaylistSplitter
-# filename = "spotify_playlists_data_1.json"
-filename = "spotify_playlists_data_backup_2025_12_10.json"
+filename = "spotify_playlists_data_1.json"
+# filename = "spotify_playlists_data_backup_2025_12_10.json"
 json_path = os.path.join(base_dir, "..", "SpotifyScraper", filename)
 json_path = os.path.abspath(json_path)
 library_path = os.path.join(base_dir, "..", "data", "library.csv")
@@ -68,9 +68,15 @@ def extract_songs_from_csv(csv_path: str):
 
             # Split multiple artists by semicolon, normalize whitespace
             artists = [a.strip() for a in artist_field.split(";")]
+            artist_string = ",".join(artists)
 
-            # for artist in artists:
-            unique_songs.add((title, ",".join(artists)))
+            record = (title, artist_string)
+
+            if record in unique_songs:
+                # print(f"Duplicate='{title}', '{artist_string}'")
+                pass
+            else:
+                unique_songs.add(record)
 
     return unique_songs
 
