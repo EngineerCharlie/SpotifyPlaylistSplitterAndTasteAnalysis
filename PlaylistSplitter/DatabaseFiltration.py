@@ -97,6 +97,70 @@ def extract_matched_songs(csv_path: str):
     return unique_songs
 
 
+def find_isolated_tracks(json_path: str, matched_songs: set):
+    """
+    Find tracks that only ever appear alone in playlists (as the only matched song).
+
+    Returns a set of (database_title, database_artist) tuples.
+    """
+
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    # Track how many times each song appears alone vs. with others
+    song_appearances = {}  # (title, artist): {'alone': count, 'with_others': count}
+
+    for playlist in data:
+        tracks = playlist.get("tracks", [])
+
+        # Filter to only matched songs
+        matched_tracks = []
+        for track in tracks:
+            if isinstance(track, list) and len(track) == 2:
+                title, artist = track
+                if (title, artist) in matched_songs:
+                    matched_tracks.append((title, artist))
+
+        # Count appearances
+        if len(matched_tracks) == 1:
+            # This song appears alone
+            song = matched_tracks[0]
+            if song not in song_appearances:
+                song_appearances[song] = {"alone": 0, "with_others": 0}
+            song_appearances[song]["alone"] += 1
+        elif len(matched_tracks) > 1:
+            # These songs appear together
+            for song in matched_tracks:
+                if song not in song_appearances:
+                    song_appearances[song] = {"alone": 0, "with_others": 0}
+                song_appearances[song]["with_others"] += 1
+
+    # Find songs that ONLY appear alone (never with other matched songs)
+    isolated_tracks = set()
+    for song, counts in song_appearances.items():
+        if counts["alone"] > 0 and counts["with_others"] == 0:
+            isolated_tracks.add(song)
+
+    return isolated_tracks
+
+
+def save_isolated_tracks(isolated_tracks: set, output_path: str):
+    """
+    Save isolated tracks to a CSV file.
+
+    CSV format: database_title, database_artist
+    """
+
+    with open(output_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["database_title", "database_artist"])
+
+        for title, artist in sorted(isolated_tracks):
+            writer.writerow([title, artist])
+
+    print(f"Isolated tracks saved to: {output_path} (count={len(isolated_tracks)})")
+
+
 if __name__ == "__main__":
     # Step 1: Extract matched songs from CSV
     print("Step 1: Loading matched songs from CSV...")
@@ -107,7 +171,13 @@ if __name__ == "__main__":
     print("Step 2: Filtering large database by matched songs...")
     filtered_playlists = filter_database_by_matched_songs(json_path, matched_songs)
 
-    # Optional: Save the filtered database
+    # Step 3: Find tracks that only appear alone in playlists
+    print("\nStep 3: Finding tracks that only appear alone in playlists...")
+    isolated_tracks = find_isolated_tracks(json_path, matched_songs)
+    isolated_output_path = os.path.join(base_dir, "..", "data", "isolated_songs.csv")
+    save_isolated_tracks(isolated_tracks, isolated_output_path)
+
+    # Save the filtered database
     output_path = os.path.join(base_dir, "..", "data", "filtered_playlists.json")
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(filtered_playlists, f, ensure_ascii=False, indent=2)
