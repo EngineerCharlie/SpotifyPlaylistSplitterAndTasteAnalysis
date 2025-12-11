@@ -223,6 +223,18 @@ def fuzzy_match_songs(
                     ",".join(lib_artist_set), ",".join(track["artist_set"])
                 ),
             )
+            
+            if artist_score < artist_threshold:
+                artist_score = max(
+                    fuzz.token_set_ratio(
+                        " ".join(lib_artist_set), " ".join(track["artist_set"])
+                    ),
+                    fuzz.token_set_ratio(
+                        ",".join(lib_artist_set), ",".join(track["artist_set"])
+                    ),
+                )
+            if title_score < title_threshold:
+                title_score = fuzz.token_set_ratio(norm_lib_title, track["norm_title"])
 
             combined_score = artist_weight * artist_score + title_weight * title_score
             scored_candidates.append(
