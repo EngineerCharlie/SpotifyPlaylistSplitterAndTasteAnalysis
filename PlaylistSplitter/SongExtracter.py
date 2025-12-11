@@ -5,7 +5,7 @@ from collections import defaultdict
 base_dir = os.path.dirname(__file__)  # .../SpotifyPlaylistSplitter/PlaylistSplitter
 filename = "spotify_playlists_data_1.json"
 filename = "spotify_playlists_data_backup_2025_12_10.json"
-json_path = os.path.join(base_dir, "..", "SpotifyScraper", filename)
+json_path = os.path.join(base_dir, "..", "data", filename)
 json_path = os.path.abspath(json_path)
 library_path = os.path.join(base_dir, "..", "data", "library.csv")
 unmatched_path = os.path.join(base_dir, "..", "data", "unmatched_songs_1.csv")
@@ -117,11 +117,33 @@ def extract_unmatched_songs_csv(csv_path: str):
     return unique_songs
 
 
-def normalize_text(s: str) -> str:
-    s = s.lower()
+def normalize_title(title: str) -> str:
+    """Normalize titles for better fuzzy matching."""
+    s = title.lower()
+    # Remove common versioning info
+    s = re.sub(r"\(feat[^\)]*\)", "", s)
+    s = re.sub(r"\(ft[^\)]*\)", "", s)
+    s = re.sub(r"\(live.*?\)", "", s)
+    s = re.sub(r"\(remaster(ed)?\)", "", s)
+    s = re.sub(r"\(.*?mix.*?\)", "", s)
     s = re.sub(r"[^\w\s]", "", s)
     s = re.sub(r"\s+", " ", s)
     return s.strip()
+
+
+def normalize_artist(artist: str) -> str:
+    """Normalize single artist name."""
+    s = artist.lower()
+    s = re.sub(r"[^\w\s]", "", s)
+    s = re.sub(r"\s+", " ", s)
+    return s.strip()
+
+
+def split_artists(artist_raw: str):
+    """Split artist field into a set of normalized artist names."""
+    # Split by commas, semicolons, &, feat.
+    parts = re.split(r",|;|&|feat\.|ft\.", artist_raw, flags=re.I)
+    return {normalize_artist(a) for a in parts if normalize_artist(a)}
 
 
 # ----------------------
@@ -130,156 +152,113 @@ def normalize_text(s: str) -> str:
 
 
 def fuzzy_match_songs(
-    songs_extracted, songs_library, artist_thresh=80, title_thresh=80
+    songs_extracted,
+    songs_library,
+    artist_weight=0.6,
+    title_weight=0.4,
+    threshold=80,
+    artist_threshold=80,
+    title_threshold=80,
+    top_n=1,  # number of top matches to return per library track
 ):
+    """
+    Improved fuzzy matching between extracted songs and a library.
 
-    # ------------------------------------------------------------
-    # PREPROCESS EXTRACTED SONGS
-    # ------------------------------------------------------------
+    Returns:
+        matches: list of tuples (library_title, library_artist, extracted_title, extracted_artist, artist_score, title_score, combined_score)
+        unmatched: list of (library_title, library_artist)
+    """
+    # Preprocess extracted songs
     extracted_tracks = []
-    unique_artists = set()
+    tracks_by_artist = defaultdict(list)
 
     for title, artist_raw in songs_extracted:
-        norm_title = normalize_text(title)
-        norm_artists = tuple(
-            sorted(
-                [
-                    na
-                    for na in (
-                        normalize_text(a.strip()) for a in re.split(r"[;,]", artist_raw)
-                    )
-                    if na  # filter empty normalized strings
-                ]
-            )
-        )
-
+        norm_title = normalize_title(title)
+        artist_set = split_artists(artist_raw)
+        if not artist_set:
+            continue
         extracted_tracks.append(
             {
                 "title": title,
                 "artists": artist_raw,
                 "norm_title": norm_title,
-                "norm_artists": norm_artists,
+                "artist_set": artist_set,
             }
         )
-
-        for a in norm_artists:
-            if a:  # skip empty normalized artist
-                unique_artists.add(a)
-
-    unique_artists = list(unique_artists)
-    print(f"Unique extracted artists: {len(unique_artists)}")
-
-    # ------------------------------------------------------------
-    # BUILD TRACKS BY ARTIST (PRIMARY SPEEDUP)
-    # ------------------------------------------------------------
-    tracks_by_artist = defaultdict(list)
-    for track in extracted_tracks:
-        for a in track["norm_artists"]:
-            tracks_by_artist[a].append(track)
-
-    # ------------------------------------------------------------
-    # BUILD APPROX ARTIST INDEX FOR FAST-PASS BLOCKING
-    # ------------------------------------------------------------
-    artist_index = defaultdict(list)
-    for a in unique_artists:
-        if not a:
-            continue  # skip empty
-        key = (a[0], len(a) // 3)
-        artist_index[key].append(a)
-
-    # ------------------------------------------------------------
-    # PRE-NORMALIZE LIBRARY SONGS
-    # ------------------------------------------------------------
-    library_norm = []
-    for title, artist_raw in songs_library:
-        nt = normalize_text(title)
-        na = tuple(sorted([normalize_text(a.strip()) for a in artist_raw.split(",")]))
-        library_norm.append(
-            {
-                "orig_title": title,
-                "orig_artists": artist_raw,
-                "norm_title": nt,
-                "norm_artist_str": " ".join(na),
-            }
-        )
+        for a in artist_set:
+            tracks_by_artist[a].append(extracted_tracks[-1])
 
     matches = []
     unmatched = []
 
-    # ------------------------------------------------------------
-    # MAIN MATCHING LOOP
-    # ------------------------------------------------------------
-    for i, lib in enumerate(library_norm):
-        if i % 25 == 0:
-            print(f"Processing track {i}...")
-
-        lib_artist_str = lib["norm_artist_str"]
-        key = (lib_artist_str[0], len(lib_artist_str) // 3)
-
-        # FAST PASS
-        approx_candidates = artist_index.get(key, [])
-
-        candidate_artists = []
-        for ex_artist in approx_candidates:
-            score = fuzz.token_sort_ratio(lib_artist_str, ex_artist)
-            if score >= artist_thresh:
-                candidate_artists.append((ex_artist, score))
-
-        # SLOW FALLBACK ON FAIL → FULL SCAN
-        if not candidate_artists:
-            for ex_artist in unique_artists:
-                score = fuzz.token_sort_ratio(lib_artist_str, ex_artist)
-                if score >= artist_thresh:
-                    candidate_artists.append((ex_artist, score))
-
-        if not candidate_artists:
-            unmatched.append((lib["orig_title"], lib["orig_artists"]))
+    for num, (lib_title, lib_artist_raw) in enumerate(songs_library):
+        if num % 25 == 0:
+            print("Processing candidate", num + 1, "for library track:", lib_title)
+        norm_lib_title = normalize_title(lib_title)
+        lib_artist_set = split_artists(lib_artist_raw)
+        if not lib_artist_set:
+            unmatched.append((lib_title, lib_artist_raw))
             continue
 
-        # ------------------------------------------------------------
-        # TRACKS FROM CANDIDATE ARTISTS (FAST NOW)
-        # ------------------------------------------------------------
+        # Candidate tracks: any extracted track sharing at least one artist
         candidate_tracks = []
-        for a, _ in candidate_artists:
-            candidate_tracks.extend(tracks_by_artist[a])
+        for a in lib_artist_set:
+            candidate_tracks.extend(tracks_by_artist.get(a, []))
 
         if not candidate_tracks:
-            unmatched.append((lib["orig_title"], lib["orig_artists"]))
+            unmatched.append((lib_title, lib_artist_raw))
             continue
 
-        # ------------------------------------------------------------
-        # TITLE MATCHING
-        # ------------------------------------------------------------
-        best_match = None
-        best_score = 0
-        lib_title_norm = lib["norm_title"]
-
+        # Compute scores
+        scored_candidates = []
         for track in candidate_tracks:
-            title_score = fuzz.token_sort_ratio(lib_title_norm, track["norm_title"])
-            if title_score < title_thresh:
-                continue
-
+            # Title score
+            title_score = fuzz.token_sort_ratio(norm_lib_title, track["norm_title"])
+            # Artist score: set-based Jaccard or fuzzy token sort on combined strings
             artist_score = max(
-                fuzz.token_sort_ratio(lib_artist_str, a) for a in track["norm_artists"]
+                fuzz.token_sort_ratio(
+                    " ".join(lib_artist_set), " ".join(track["artist_set"])
+                ),
+                fuzz.token_sort_ratio(
+                    ",".join(lib_artist_set), ",".join(track["artist_set"])
+                ),
             )
 
-            combined = artist_score * title_score
+            combined_score = artist_weight * artist_score + title_weight * title_score
+            scored_candidates.append(
+                {
+                    "track": track,
+                    "artist_score": artist_score,
+                    "title_score": title_score,
+                    "combined_score": combined_score,
+                }
+            )
 
-            if combined > best_score:
-                best_score = combined
-                best_match = (
-                    lib["orig_title"],
-                    lib["orig_artists"],
-                    track["title"],
-                    track["artists"],
-                    artist_score,
-                    title_score,
+        # Keep top N matches above threshold
+        scored_candidates = [
+            c
+            for c in scored_candidates
+            if c["combined_score"] >= threshold
+            and c["artist_score"] >= artist_threshold
+            and c["title_score"] >= threshold
+        ]
+        if not scored_candidates:
+            unmatched.append((lib_title, lib_artist_raw))
+            continue
+
+        scored_candidates.sort(key=lambda x: x["combined_score"], reverse=True)
+        for c in scored_candidates[:top_n]:
+            matches.append(
+                (
+                    lib_title,
+                    lib_artist_raw,
+                    c["track"]["title"],
+                    c["track"]["artists"],
+                    round(c["artist_score"], 2),
+                    round(c["title_score"], 2),
+                    round(c["combined_score"], 2),
                 )
-
-        if best_match:
-            matches.append(best_match)
-        else:
-            unmatched.append((lib["orig_title"], lib["orig_artists"]))
+            )
 
     return matches, unmatched
 
@@ -291,7 +270,7 @@ if __name__ == "__main__":
     songs_library = extract_unmatched_songs_csv(unmatched_path)
     print(len(songs_library), "unique songs extracted from library.")
     matches, unmatched = fuzzy_match_songs(
-        list(songs_extracted), list(songs_library), 80, 80
+        list(songs_extracted), list(songs_library), 0.6, 0.4, 80, 80, 80
     )
     matched_path = os.path.join(base_dir, "..", "data", "matched_songs.csv")
     print("Matched tracks:", len(matches))
@@ -315,6 +294,7 @@ if __name__ == "__main__":
             ext_artists,
             artist_score,
             title_score,
+            combined_score,
         ) in matches:
             writer.writerow(
                 [
