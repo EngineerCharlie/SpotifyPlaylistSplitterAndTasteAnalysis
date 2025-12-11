@@ -3,7 +3,7 @@ from rapidfuzz import fuzz
 from collections import defaultdict
 
 base_dir = os.path.dirname(__file__)  # .../SpotifyPlaylistSplitter/PlaylistSplitter
-filename = "spotify_playlists_data_2.json"
+filename = "spotify_playlists_data_1.json"
 # filename = "spotify_playlists_data_backup_2025_12_10.json"
 library_path = os.path.join(base_dir, "..", "data", "library.csv")
 unmatched_path = os.path.join(base_dir, "..", "data", "unmatched_songs_1.csv")
@@ -182,22 +182,22 @@ def preprocess_tracks(songs):
 # ----------------------
 
 
-def match_songs_cascaded(library, extracted, threshold_title=85, threshold_artist=85):
+def match_songs_cascaded(library, database, threshold_title=85, threshold_artist=85):
     # ---------- Preprocessing ----------
     lib, lib_by_title, lib_by_artist = preprocess_tracks(library)
-    ext, ext_by_title, ext_by_artist = preprocess_tracks(extracted)
+    ext, db_by_title, db_by_artist = preprocess_tracks(database)
 
     matched = []
     unmatched = set((t["title"], t["artists_raw"]) for t in lib)
 
     # Helper to record a match
-    def record(lib_item, ext_item, artist_score, title_score):
+    def record(lib_item, db_item, artist_score, title_score):
         matched.append(
             (
                 lib_item["title"],
                 lib_item["artists_raw"],
-                ext_item["title"],
-                ext_item["artists_raw"],
+                db_item["title"],
+                db_item["artists_raw"],
                 round(artist_score, 2),
                 round(title_score, 2),
                 round(artist_score + title_score, 2),
@@ -212,10 +212,10 @@ def match_songs_cascaded(library, extracted, threshold_title=85, threshold_artis
         if (lib_item["title"], lib_item["artists_raw"]) not in unmatched:
             continue
 
-        candidates = ext_by_title.get(lib_item["norm_title"], [])
-        for ext_item in candidates:
-            if lib_item["artist_set"] == ext_item["artist_set"]:
-                record(lib_item, ext_item, 100, 100)
+        candidates = db_by_title.get(lib_item["norm_title"], [])
+        for db_item in candidates:
+            if lib_item["artist_set"] == db_item["artist_set"]:
+                record(lib_item, db_item, 100, 100)
                 break
 
     # -------------------------------------------------------------------
@@ -229,13 +229,13 @@ def match_songs_cascaded(library, extracted, threshold_title=85, threshold_artis
         artist_string = " ".join(sorted(lib_item["artist_set"]))
 
         for a in lib_item["artist_set"]:
-            for ext_item in ext_by_artist.get(a, []):
-                if ext_item["artist_set"] == lib_item["artist_set"]:
+            for db_item in db_by_artist.get(a, []):
+                if db_item["artist_set"] == lib_item["artist_set"]:
                     title_score = fuzz.token_sort_ratio(
-                        lib_item["norm_title"], ext_item["norm_title"]
+                        lib_item["norm_title"], db_item["norm_title"]
                     )
                     if title_score >= threshold_title:
-                        record(lib_item, ext_item, 100, title_score)
+                        record(lib_item, db_item, 100, title_score)
                         break
 
     # -------------------------------------------------------------------
@@ -245,13 +245,13 @@ def match_songs_cascaded(library, extracted, threshold_title=85, threshold_artis
         if (lib_item["title"], lib_item["artists_raw"]) not in unmatched:
             continue
 
-        candidates = ext_by_title.get(lib_item["norm_title"], [])
-        for ext_item in candidates:
+        candidates = db_by_title.get(lib_item["norm_title"], [])
+        for db_item in candidates:
             artist_score = fuzz.token_sort_ratio(
-                " ".join(lib_item["artist_set"]), " ".join(ext_item["artist_set"])
+                " ".join(lib_item["artist_set"]), " ".join(db_item["artist_set"])
             )
             if artist_score >= threshold_artist:
-                record(lib_item, ext_item, artist_score, 100)
+                record(lib_item, db_item, artist_score, 100)
                 break
 
     # -------------------------------------------------------------------
@@ -262,17 +262,20 @@ def match_songs_cascaded(library, extracted, threshold_title=85, threshold_artis
             continue
 
         best = None
-
+        print("Matching (full fuzzy):", lib_item["title"], lib_item["artists_raw"])
         for a in lib_item["artist_set"]:
-            for ext_item in ext_by_artist.get(a, []):
+            print(a)
+            for db_item in db_by_artist.get(a, []):
+                print(db_item, " ".join(lib_item["artist_set"]))
                 artist_score = fuzz.token_set_ratio(
-                    " ".join(lib_item["artist_set"]), " ".join(ext_item["artist_set"])
+                    " ".join(lib_item["artist_set"]), " ".join(db_item["artist_set"])
                 )
+                print("Artist score:", artist_score)
                 if artist_score < threshold_artist:
                     continue
 
                 title_score = fuzz.token_set_ratio(
-                    lib_item["norm_title"], ext_item["norm_title"]
+                    lib_item["norm_title"], db_item["norm_title"]
                 )
                 if title_score < threshold_title:
                     continue
@@ -282,7 +285,7 @@ def match_songs_cascaded(library, extracted, threshold_title=85, threshold_artis
                 if best is None or total > best["total"]:
                     best = {
                         "lib_item": lib_item,
-                        "ext_item": ext_item,
+                        "db_item": db_item,
                         "artist_score": round(artist_score, 2),
                         "title_score": round(title_score, 2),
                         "total": total,
@@ -291,7 +294,7 @@ def match_songs_cascaded(library, extracted, threshold_title=85, threshold_artis
         if best:
             record(
                 best["lib_item"],
-                best["ext_item"],
+                best["db_item"],
                 best["artist_score"],
                 best["title_score"],
             )
@@ -304,11 +307,11 @@ if __name__ == "__main__":
     songs_library = extract_unmatched_songs_csv(unmatched_path)
     print(len(songs_library), "unique songs extracted from library.")
 
-    songs_extracted = extract_unique_songs_json(json_path)
-    print(len(songs_extracted), "unique songs extracted from playlists.")
+    songs_db = extract_unique_songs_json(json_path)
+    print(len(songs_db), "unique songs extracted from playlists.")
     matches, unmatched = match_songs_cascaded(
         list(songs_library),
-        list(songs_extracted),
+        list(songs_db),
         threshold_title=85,
         threshold_artist=85,
     )
@@ -321,8 +324,8 @@ if __name__ == "__main__":
             [
                 "library_title",
                 "library_artist",
-                "extracted_title",
-                "extracted_artist",
+                "database_title",
+                "database_artist",
                 "artist_score",
                 "title_score",
             ]
