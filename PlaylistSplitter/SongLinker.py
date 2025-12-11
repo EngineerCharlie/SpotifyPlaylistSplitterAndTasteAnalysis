@@ -127,9 +127,7 @@ def normalize_title(title: str) -> str:
     s = title.lower()
     s = re.sub(r"\(feat[^\)]*\)", "", s)
     s = re.sub(r"\(ft[^\)]*\)", "", s)
-    s = re.sub(r"\(live.*?\)", "", s)
     s = re.sub(r"\(remaster(ed)?\)", "", s)
-    s = re.sub(r"\(.*?mix.*?\)", "", s)
     s = re.sub(r"[^\w\s]", "", s)
     s = re.sub(r"\s+", " ", s)
     return s.strip()
@@ -185,7 +183,7 @@ def preprocess_tracks(songs):
 def match_songs_cascaded(library, database, threshold_title=85, threshold_artist=85):
     # ---------- Preprocessing ----------
     lib, lib_by_title, lib_by_artist = preprocess_tracks(library)
-    ext, db_by_title, db_by_artist = preprocess_tracks(database)
+    db, db_by_title, db_by_artist = preprocess_tracks(database)
 
     matched = []
     unmatched = set((t["title"], t["artists_raw"]) for t in lib)
@@ -227,8 +225,9 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
             continue
 
         # exact artist-set match
-        artist_string = " ".join(sorted(lib_item["artist_set"]))
+        initial_unmatched_state = (lib_item["title"], lib_item["artists_raw"])
 
+        # exact artist-set match
         for a in lib_item["artist_set"]:
             for db_item in db_by_artist.get(a, []):
                 if db_item["artist_set"] == lib_item["artist_set"]:
@@ -237,7 +236,11 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
                     )
                     if title_score >= threshold_title:
                         record(lib_item, db_item, 100, title_score)
-                        break
+                        # Use a break that exits the 'for a in lib_item["artist_set"]' loop
+                        break 
+            # Check if the item was matched and exit the artist loop
+            if initial_unmatched_state not in unmatched:
+                break # Breaks out of the 'for a in lib_item["artist_set"]' loop
     print(f"After Stage 2, matched: {len(matched)}, unmatched: {len(unmatched)}")
 
     # -------------------------------------------------------------------
@@ -246,15 +249,14 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
     for lib_item in lib:
         if (lib_item["title"], lib_item["artists_raw"]) not in unmatched:
             continue
-
         candidates = db_by_title.get(lib_item["norm_title"], [])
         for db_item in candidates:
-            artist_score = fuzz.token_sort_ratio(
+            artist_score = fuzz.token_set_ratio(
                 " ".join(lib_item["artist_set"]), " ".join(db_item["artist_set"])
             )
             if artist_score >= threshold_artist:
                 record(lib_item, db_item, artist_score, 100)
-                break
+                break 
     print(f"After Stage 3, matched: {len(matched)}, unmatched: {len(unmatched)}")
 
     # ----------------------------
@@ -269,15 +271,14 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
             continue
         key = (k[0], len(k) // 3)  # first char + length bucket
         db_artist_index[key].append(k)
-    DEBUG = True  # overall stage debug
+    DEBUG = False  # overall stage debug
     DEBUG_VERBOSE = False  # enable only if you want per-key noisy logs
     DEBUG_EVERY = 1  # progress indicator frequency
-
 
     # Main full-fuzzy loop
     for num, lib_item in enumerate(lib):
         # Progress summary
-        if DEBUG and (num % DEBUG_EVERY == 0):
+        if num % 25 == 0:
             print(
                 f"[Stage 4] Processing {num+1}/{len(lib)} "
                 f"(matched={len(matched)}, unmatched={len(unmatched)})"
@@ -298,7 +299,9 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
         candidate_artist_keys = db_artist_index.get(block_key, None)
 
         # If block produced nothing, use full list
-        block_used = candidate_artist_keys is not None and len(candidate_artist_keys) > 0
+        block_used = (
+            candidate_artist_keys is not None and len(candidate_artist_keys) > 0
+        )
         if not block_used:
             candidate_artist_keys = db_artist_keys
 
@@ -313,7 +316,7 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
 
         # Evaluate fuzzy artist matches among candidate artist keys
         for artist_key in candidate_artist_keys:
-            artist_score = fuzz.token_set_ratio(lib_artist_str, artist_key)
+            artist_score = fuzz.token_sort_ratio(lib_artist_str, artist_key)
 
             if DEBUG_VERBOSE:
                 print(f"    artist_key='{artist_key}' => artist_score={artist_score}")
@@ -325,7 +328,7 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
 
             # For any artist_key that passes, scan db items under key
             for db_item in db_by_artist.get(artist_key, []):
-                title_score = fuzz.token_set_ratio(
+                title_score = fuzz.token_sort_ratio(
                     lib_item["norm_title"], db_item["norm_title"]
                 )
 
@@ -356,7 +359,32 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
         # If nothing matched, global fallback
         if best is None:
             if DEBUG:
-                print("[Stage 4] No match from block. Running global fallback scan.")
+                print("[Stage 4] No match from block. Running global fallback scan 1.")
+
+            for artist_key in db_artist_keys:
+                artist_score = fuzz.token_sort_ratio(lib_artist_str, artist_key)
+                if artist_score < threshold_artist:
+                    continue
+
+                for db_item in db_by_artist.get(artist_key, []):
+                    title_score = fuzz.token_sort_ratio(
+                        lib_item["norm_title"], db_item["norm_title"]
+                    )
+                    if title_score < threshold_title:
+                        continue
+
+                    total = artist_score + title_score
+                    if best is None or total > best["total"]:
+                        best = {
+                            "lib_item": lib_item,
+                            "db_item": db_item,
+                            "artist_score": round(artist_score, 2),
+                            "title_score": round(title_score, 2),
+                            "total": total,
+                        }
+        if best is None:
+            if DEBUG:
+                print("[Stage 4] No match from block. Running global fallback scan 2")
 
             for artist_key in db_artist_keys:
                 artist_score = fuzz.token_set_ratio(lib_artist_str, artist_key)
@@ -414,8 +442,8 @@ if __name__ == "__main__":
     matches, unmatched = match_songs_cascaded(
         list(songs_library),
         list(songs_db),
-        threshold_title=85,
-        threshold_artist=85,
+        threshold_title=80,
+        threshold_artist=80,
     )
     matched_path = os.path.join(base_dir, "..", "data", "matched_songs.csv")
     print("Matched tracks:", len(matches))
@@ -434,7 +462,6 @@ if __name__ == "__main__":
         )
 
         for m in matches:
-            print(m)
             writer.writerow([m[0], m[1], m[2], m[3], m[4], m[5]])
 
     # Unmatched writer remains the same
