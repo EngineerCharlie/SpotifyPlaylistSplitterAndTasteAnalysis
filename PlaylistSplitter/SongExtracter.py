@@ -117,6 +117,11 @@ def extract_unmatched_songs_csv(csv_path: str):
     return unique_songs
 
 
+# ----------------------
+# Normalization functions
+# ----------------------
+
+
 def normalize_title(title: str) -> str:
     """Normalize titles for better fuzzy matching."""
     s = title.lower()
@@ -132,9 +137,16 @@ def normalize_title(title: str) -> str:
 
 
 def normalize_artist(artist: str) -> str:
-    """Normalize single artist name."""
-    s = artist.lower()
+    """Normalize a single artist name."""
+    s = artist.lower().strip()
+    # Remove leading 'the '
+    if s.startswith("the "):
+        s = s[4:]
+    # Remove periods
+    s = s.replace(".", " ")
+    # Remove any other non-alphanumeric characters
     s = re.sub(r"[^\w\s]", "", s)
+    # Normalize whitespace
     s = re.sub(r"\s+", " ", s)
     return s.strip()
 
@@ -193,7 +205,7 @@ def fuzzy_match_songs(
 
     for num, (lib_title, lib_artist_raw) in enumerate(songs_library):
         if num % 25 == 0:
-            print("Processing candidate", num + 1, "for library track:", lib_title)
+            print("Processing ", num + 1, "for library track:", lib_title)
         norm_lib_title = normalize_title(lib_title)
         lib_artist_set = split_artists(lib_artist_raw)
         if not lib_artist_set:
@@ -214,7 +226,7 @@ def fuzzy_match_songs(
         for track in candidate_tracks:
             # Title score
             title_score = fuzz.token_sort_ratio(norm_lib_title, track["norm_title"])
-            # Artist score: set-based Jaccard or fuzzy token sort on combined strings
+            # Artist score
             artist_score = max(
                 fuzz.token_sort_ratio(
                     " ".join(lib_artist_set), " ".join(track["artist_set"])
@@ -223,7 +235,8 @@ def fuzzy_match_songs(
                     ",".join(lib_artist_set), ",".join(track["artist_set"])
                 ),
             )
-            
+
+            # Fallbacks using token_set_ratio if below threshold
             if artist_score < artist_threshold:
                 artist_score = max(
                     fuzz.token_set_ratio(
@@ -233,6 +246,12 @@ def fuzzy_match_songs(
                         ",".join(lib_artist_set), ",".join(track["artist_set"])
                     ),
                 )
+            if artist_score < artist_threshold:
+                # Fallback: token overlap
+                lib_tokens = set(" ".join(lib_artist_set).split())
+                track_tokens = set(" ".join(track["artist_set"]).split())
+                overlap = len(lib_tokens & track_tokens) / max(len(lib_tokens), 1) * 100
+                artist_score = max(artist_score, overlap)
             if title_score < title_threshold:
                 title_score = fuzz.token_set_ratio(norm_lib_title, track["norm_title"])
 
@@ -252,7 +271,7 @@ def fuzzy_match_songs(
             for c in scored_candidates
             if c["combined_score"] >= threshold
             and c["artist_score"] >= artist_threshold
-            and c["title_score"] >= threshold
+            and c["title_score"] >= title_threshold
         ]
         if not scored_candidates:
             unmatched.append((lib_title, lib_artist_raw))
@@ -276,11 +295,12 @@ def fuzzy_match_songs(
 
 
 if __name__ == "__main__":
-    songs_extracted = extract_unique_songs_json(json_path)
-    print(len(songs_extracted), "unique songs extracted from playlists.")
     # songs_library = extract_songs_from_csv(library_path)
     songs_library = extract_unmatched_songs_csv(unmatched_path)
     print(len(songs_library), "unique songs extracted from library.")
+
+    songs_extracted = extract_unique_songs_json(json_path)
+    print(len(songs_extracted), "unique songs extracted from playlists.")
     matches, unmatched = fuzzy_match_songs(
         list(songs_extracted), list(songs_library), 0.6, 0.4, 80, 80, 80
     )
