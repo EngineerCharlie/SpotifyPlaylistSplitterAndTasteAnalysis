@@ -148,9 +148,12 @@ def main():
 
     # Create playlists for each cluster
     print("\nCreating cluster playlists...")
-    for cluster_id, songs in sorted(
-        clusters.items(), key=lambda x: int(x[0]) if x[0].isdigit() else x[0]
-    ):
+    def sort_key(item):
+        cid = item[0]
+        # Handle mixed numeric/string cluster ids safely
+        return (0, int(cid)) if isinstance(cid, str) and cid.isdigit() else (1, str(cid))
+
+    for cluster_id, songs in sorted(clusters.items(), key=sort_key):
         file_paths = []
 
         for db_title, db_artist in songs:

@@ -4,8 +4,8 @@ base_dir = os.path.dirname(__file__)  # .../SpotifyPlaylistSplitter/PlaylistSpli
 filename = "spotify_playlists_data_1.json"
 filename = "spotify_playlists_data_backup_2025_12_10.json"
 library_path = os.path.join(base_dir, "..", "data", "library.csv")
-unmatched_path = os.path.join(base_dir, "..", "data", "unmatched_songs_1.csv")
-matched_path = os.path.join(base_dir, "..", "data", "matched_songs_1.csv")
+unmatched_path = os.path.join(base_dir, "..", "data", "unmatched_songs.csv")
+matched_path = os.path.join(base_dir, "..", "data", "matched_songs.csv")
 json_path = os.path.join(base_dir, "..", "data", filename)
 
 json_path = os.path.abspath(json_path)

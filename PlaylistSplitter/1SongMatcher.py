@@ -237,10 +237,10 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
                     if title_score >= threshold_title:
                         record(lib_item, db_item, 100, title_score)
                         # Use a break that exits the 'for a in lib_item["artist_set"]' loop
-                        break 
+                        break
             # Check if the item was matched and exit the artist loop
             if initial_unmatched_state not in unmatched:
-                break # Breaks out of the 'for a in lib_item["artist_set"]' loop
+                break  # Breaks out of the 'for a in lib_item["artist_set"]' loop
     print(f"After Stage 2, matched: {len(matched)}, unmatched: {len(unmatched)}")
 
     # -------------------------------------------------------------------
@@ -256,7 +256,7 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
             )
             if artist_score >= threshold_artist:
                 record(lib_item, db_item, artist_score, 100)
-                break 
+                break
     print(f"After Stage 3, matched: {len(matched)}, unmatched: {len(unmatched)}")
 
     # ----------------------------
@@ -433,8 +433,8 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
 
 
 if __name__ == "__main__":
-    # songs_library = extract_songs_from_csv(library_path)
-    songs_library = extract_unmatched_songs_csv(unmatched_path)
+    songs_library = extract_songs_from_csv(library_path)
+    # songs_library = extract_unmatched_songs_csv(unmatched_path)
     print(len(songs_library), "unique songs extracted from library.")
 
     songs_db = extract_unique_songs_json(json_path)
@@ -447,6 +447,10 @@ if __name__ == "__main__":
     )
     matched_path = os.path.join(base_dir, "..", "data", "matched_songs.csv")
     print("Matched tracks:", len(matches))
+
+    def to_semicolon_artists(s: str) -> str:
+        parts = [a.strip() for a in s.split(",") if a.strip()]
+        return "; ".join(parts)
 
     with open(matched_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -462,7 +466,25 @@ if __name__ == "__main__":
         )
 
         for m in matches:
-            writer.writerow([m[0], m[1], m[2], m[3], m[4], m[5]])
+            (
+                lib_title,
+                lib_artists_raw,
+                db_title,
+                db_artists_raw,
+                artist_score,
+                title_score,
+                _,
+            ) = m
+            writer.writerow(
+                [
+                    lib_title,
+                    to_semicolon_artists(lib_artists_raw),
+                    db_title,
+                    db_artists_raw,
+                    artist_score,
+                    title_score,
+                ]
+            )
 
     # Unmatched writer remains the same
     unmatched_path = os.path.join(base_dir, "..", "data", "unmatched_songs.csv")
@@ -471,7 +493,7 @@ if __name__ == "__main__":
         writer = csv.writer(f)
         writer.writerow(["library_title", "library_artist"])
         for title, artist in unmatched:
-            writer.writerow([title, artist])
+            writer.writerow([title, to_semicolon_artists(artist)])
 
     # print(f"Exported unmatched songs to: {unmatched_path}")
     # print(f"Exported matched songs to: {matched_path}")
