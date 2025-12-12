@@ -89,7 +89,177 @@ def build_cooccurrence_matrix(playlists):
     return adjacency_csr, song_to_idx, idx_to_song
 
 
-def cluster_tracks(adjacency_matrix, n_clusters=50, method="spectral", resolution=1.0):
+def _recluster_oversized(
+    adjacency_matrix,
+    cluster_labels,
+    max_cluster_size,
+    method,
+    resolution,
+    recluster_resolution,
+    n_clusters,
+    depth,
+):
+    """
+    Recursively re-cluster clusters that exceed max_cluster_size.
+
+    Args:
+        adjacency_matrix: full sparse adjacency matrix
+        cluster_labels: current cluster assignments
+        max_cluster_size: threshold for re-clustering
+        method: clustering method to use
+        resolution: Louvain resolution parameter
+        n_clusters: number of clusters for spectral/agglomerative
+        depth: current recursion depth
+
+    Returns:
+        Updated cluster_labels with oversized clusters split
+    """
+
+    indent = "  " * (depth + 1)
+    unique, counts = np.unique(cluster_labels, return_counts=True)
+    oversized = unique[counts > max_cluster_size]
+
+    if len(oversized) == 0:
+        return cluster_labels
+
+    # Create a mapping for new cluster IDs
+    new_cluster_id_counter = cluster_labels.max() + 1
+    new_cluster_labels = cluster_labels.copy()
+
+    for oversized_cluster_id in oversized:
+        cluster_indices = np.where(cluster_labels == oversized_cluster_id)[0]
+        cluster_size = len(cluster_indices)
+
+        print(
+            f"{indent}Re-clustering oversized cluster {oversized_cluster_id} (size: {cluster_size})"
+        )
+
+        # Extract sub-matrix for this cluster
+        cluster_adjacency = adjacency_matrix[cluster_indices][:, cluster_indices]
+
+        # Determine number of sub-clusters
+        # Aim for clusters of roughly max_cluster_size
+        sub_n_clusters = max(
+            2, (cluster_size + max_cluster_size - 1) // max_cluster_size
+        )
+
+        # Recursively cluster the oversized cluster
+        sub_labels = cluster_tracks(
+            cluster_adjacency,
+            n_clusters=sub_n_clusters,
+            method=method,
+            resolution=resolution,
+            recluster_resolution=recluster_resolution,
+            max_cluster_size=max_cluster_size,
+            depth=depth + 1,
+        )
+
+        # Map sub-cluster labels back to original indices and assign new IDs
+        for local_idx, global_idx in enumerate(cluster_indices):
+            sub_cluster_id = sub_labels[local_idx]
+            # Create unique global cluster IDs
+            new_global_cluster_id = new_cluster_id_counter + sub_cluster_id
+            new_cluster_labels[global_idx] = new_global_cluster_id
+
+        new_cluster_id_counter += sub_labels.max() + 1
+
+    # Print final distribution
+    unique, counts = np.unique(new_cluster_labels, return_counts=True)
+    print(f"\n{indent}After re-clustering:")
+    print(f"{indent}  Clusters created: {len(unique)}")
+    print(f"{indent}  Min cluster size: {counts.min()}")
+    print(f"{indent}  Max cluster size: {counts.max()}")
+    print(f"{indent}  Mean cluster size: {counts.mean():.1f}")
+
+    return new_cluster_labels
+
+
+def _merge_undersized(adjacency_matrix, cluster_labels, min_cluster_size, depth):
+    """
+    Merge clusters that are smaller than min_cluster_size with their nearest neighbors.
+
+    Args:
+        adjacency_matrix: full sparse adjacency matrix
+        cluster_labels: current cluster assignments
+        min_cluster_size: threshold for merging
+        depth: current recursion depth
+
+    Returns:
+        Updated cluster_labels with undersized clusters merged
+    """
+
+    indent = "  " * (depth + 1)
+    unique, counts = np.unique(cluster_labels, return_counts=True)
+    undersized = unique[counts < min_cluster_size]
+
+    if len(undersized) == 0:
+        return cluster_labels
+
+    print(
+        f"{indent}Found {len(undersized)} clusters smaller than min size of {min_cluster_size}. Merging..."
+    )
+    new_cluster_labels = cluster_labels.copy()
+
+    for undersized_cluster_id in undersized:
+        cluster_indices = np.where(cluster_labels == undersized_cluster_id)[0]
+        cluster_size = len(cluster_indices)
+
+        # Find the cluster with the most connections to this one
+        best_neighbor_cluster = None
+        best_connection_count = 0
+
+        for other_cluster_id in unique:
+            if other_cluster_id == undersized_cluster_id:
+                continue
+
+            other_indices = np.where(cluster_labels == other_cluster_id)[0]
+            # Count connections between this cluster and the other cluster
+            connection_count = adjacency_matrix[cluster_indices][:, other_indices].sum()
+
+            if connection_count > best_connection_count:
+                best_connection_count = connection_count
+                best_neighbor_cluster = other_cluster_id
+
+        if best_neighbor_cluster is not None:
+            print(
+                f"{indent}  Merging cluster {undersized_cluster_id} (size: {cluster_size}) with cluster {best_neighbor_cluster}"
+            )
+            new_cluster_labels[cluster_indices] = best_neighbor_cluster
+        else:
+            print(
+                f"{indent}  Could not find neighbor for cluster {undersized_cluster_id}, keeping as is"
+            )
+
+    return new_cluster_labels
+
+
+def _renumber_clusters_contiguous(cluster_labels):
+    """
+    Renumber clusters to be contiguous starting from 1.
+
+    Args:
+        cluster_labels: current cluster assignments
+
+    Returns:
+        Renumbered cluster_labels
+    """
+
+    unique_clusters = np.unique(cluster_labels)
+    mapping = {old_id: new_id for new_id, old_id in enumerate(unique_clusters, start=1)}
+    renumbered = np.array([mapping[label] for label in cluster_labels])
+    return renumbered
+
+
+def cluster_tracks(
+    adjacency_matrix,
+    n_clusters=50,
+    method="spectral",
+    resolution=1.0,
+    recluster_resolution=0.5,
+    max_cluster_size=None,
+    min_cluster_size=None,
+    depth=0,
+):
     """
     Cluster tracks based on the co-occurrence adjacency matrix.
 
@@ -98,16 +268,20 @@ def cluster_tracks(adjacency_matrix, n_clusters=50, method="spectral", resolutio
         n_clusters: number of clusters to create
         method: clustering method ('spectral', 'agglomerative', or 'louvain')
         resolution: Louvain resolution parameter (higher -> more clusters)
+        max_cluster_size: if set, re-cluster any cluster larger than this size
+        min_cluster_size: if set, merge any cluster smaller than this size with nearest neighbor
+        depth: recursion depth (for logging purposes)
 
     Returns:
         cluster_labels: array of cluster assignments for each song
     """
 
-    print(f"\nClustering tracks using {method} clustering...")
+    indent = "  " * depth
+    print(f"{indent}Clustering tracks using {method} clustering...")
     if method != "louvain":
-        print(f"Target clusters: {n_clusters}")
+        print(f"{indent}Target clusters: {n_clusters}")
     else:
-        print(f"Louvain resolution: {resolution}")
+        print(f"{indent}Louvain resolution: {resolution}")
 
     if method == "spectral":
         # Spectral clustering works well with similarity/adjacency matrices
@@ -166,11 +340,44 @@ def cluster_tracks(adjacency_matrix, n_clusters=50, method="spectral", resolutio
 
     # Print cluster distribution
     unique, counts = np.unique(cluster_labels, return_counts=True)
-    print(f"\nCluster distribution:")
-    print(f"  Clusters created: {len(unique)}")
-    print(f"  Min cluster size: {counts.min()}")
-    print(f"  Max cluster size: {counts.max()}")
-    print(f"  Mean cluster size: {counts.mean():.1f}")
+    print(f"{indent}Cluster distribution:")
+    print(f"{indent}  Clusters created: {len(unique)}")
+    print(f"{indent}  Min cluster size: {counts.min()}")
+    print(f"{indent}  Max cluster size: {counts.max()}")
+    print(f"{indent}  Mean cluster size: {counts.mean():.1f}")
+
+    # Check if any clusters exceed max_cluster_size and re-cluster if needed
+    if max_cluster_size is not None and counts.max() > max_cluster_size:
+        print(
+            f"\n{indent}Found clusters exceeding max size of {max_cluster_size}. Re-clustering oversized clusters..."
+        )
+        cluster_labels = _recluster_oversized(
+            adjacency_matrix,
+            cluster_labels,
+            max_cluster_size,
+            method,
+            resolution,
+            recluster_resolution,
+            n_clusters,
+            depth,
+        )
+
+    # Check if any clusters are below min_cluster_size and merge if needed (only at top level, depth=0)
+    if min_cluster_size is not None and depth == 0:
+        cluster_labels = _merge_undersized(
+            adjacency_matrix, cluster_labels, min_cluster_size, depth
+        )
+
+    # Renumber clusters to be contiguous from 1 (only at top level, depth=0)
+    if depth == 0:
+        print(f"\n{indent}Renumbering clusters to be contiguous from 1...")
+        cluster_labels = _renumber_clusters_contiguous(cluster_labels)
+        unique, counts = np.unique(cluster_labels, return_counts=True)
+        print(f"{indent}Final cluster distribution:")
+        print(f"{indent}  Clusters created: {len(unique)}")
+        print(f"{indent}  Min cluster size: {counts.min()}")
+        print(f"{indent}  Max cluster size: {counts.max()}")
+        print(f"{indent}  Mean cluster size: {counts.mean():.1f}")
 
     return cluster_labels
 
@@ -235,8 +442,16 @@ if __name__ == "__main__":
     # Cluster tracks (use Louvain by default; set method/n_clusters as needed)
     method = "louvain"
     n_clusters = 50  # Used only for spectral/agglomerative
+    max_cluster_size = 200  # Re-cluster any cluster larger than this
+    min_cluster_size = 10  # Merge any cluster smaller than this with nearest neighbor
     cluster_labels = cluster_tracks(
-        adjacency_matrix, n_clusters=n_clusters, method=method, resolution=1.0
+        adjacency_matrix,
+        n_clusters=n_clusters,
+        method=method,
+        resolution=2,
+        recluster_resolution=0.7,
+        max_cluster_size=max_cluster_size,
+        min_cluster_size=min_cluster_size,
     )
 
     # Save results
@@ -247,5 +462,6 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("Sample cluster analysis:")
     print("=" * 60)
-    for cluster_id in range(min(3, n_clusters)):
+    unique_clusters = np.unique(cluster_labels)
+    for cluster_id in unique_clusters[: min(3, len(unique_clusters))]:
         analyze_cluster(cluster_id, cluster_labels, idx_to_song, adjacency_matrix)
