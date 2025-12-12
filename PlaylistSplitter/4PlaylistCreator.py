@@ -8,6 +8,7 @@ clusters_path = os.path.join(data_dir, "song_clusters.csv")
 isolated_path = os.path.join(data_dir, "isolated_songs.csv")
 matched_path = os.path.join(data_dir, "matched_songs.csv")
 library_path = os.path.join(data_dir, "library.csv")
+unmatched_path = os.path.join(data_dir, "unmatched_songs.csv")
 output_dir = os.path.join(base_dir, "..", "playlists")
 
 
@@ -102,6 +103,25 @@ def load_isolated_songs(csv_path: str):
     return isolated
 
 
+def load_unmatched_songs(csv_path: str):
+    """
+    Load unmatched library songs.
+    Returns list of (library_title, library_artist)
+    """
+    unmatched = []
+
+    with open(csv_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            title = row.get("library_title", "").strip()
+            artist = row.get("library_artist", "").strip()
+
+            if title and artist:
+                unmatched.append((title, artist))
+
+    return unmatched
+
+
 def create_m3u_playlist(songs, output_path, playlist_name):
     """
     Create an .m3u playlist file.
@@ -141,6 +161,10 @@ def main():
     isolated_songs = load_isolated_songs(isolated_path)
     print(f"Loaded {len(isolated_songs)} isolated tracks")
 
+    print("\nLoading unmatched songs...")
+    unmatched_songs = load_unmatched_songs(unmatched_path)
+    print(f"Loaded {len(unmatched_songs)} unmatched tracks")
+
     # Track statistics
     total_playlists = 0
     total_tracks_in_playlists = 0
@@ -148,10 +172,13 @@ def main():
 
     # Create playlists for each cluster
     print("\nCreating cluster playlists...")
+
     def sort_key(item):
         cid = item[0]
         # Handle mixed numeric/string cluster ids safely
-        return (0, int(cid)) if isinstance(cid, str) and cid.isdigit() else (1, str(cid))
+        return (
+            (0, int(cid)) if isinstance(cid, str) and cid.isdigit() else (1, str(cid))
+        )
 
     for cluster_id, songs in sorted(clusters.items(), key=sort_key):
         file_paths = []
@@ -183,7 +210,13 @@ def main():
                 file_paths.append(library[lib_key])
             else:
                 songs_not_found.append((db_title, db_artist, "isolated", "N/A"))
-
+        
+        for lib_title, lib_artist in unmatched_songs:
+            if (lib_title, lib_artist) in library:
+                file_paths.append(library[(lib_title, lib_artist)])
+            else:
+                songs_not_found.append((lib_title, lib_artist, "unmatched", "N/A"))
+        
         if file_paths:
             playlist_path = os.path.join(output_dir, "isolated_songs.m3u")
             create_m3u_playlist(file_paths, playlist_path, "Isolated Songs")

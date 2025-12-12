@@ -3,10 +3,10 @@ from rapidfuzz import fuzz
 from collections import defaultdict
 
 base_dir = os.path.dirname(__file__)  # .../SpotifyPlaylistSplitter/PlaylistSplitter
-filename = "spotify_playlists_data_1.json"
-filename = "spotify_playlists_data_backup_2025_12_10.json"
+filename = "spotify_playlists_data_1_converted.json"
+filename = "spotify_playlists_data_backup_2025_12_10_converted.json"
 library_path = os.path.join(base_dir, "..", "data", "library.csv")
-unmatched_path = os.path.join(base_dir, "..", "data", "unmatched_songs_1.csv")
+unmatched_path = os.path.join(base_dir, "..", "data", "unmatched_songs_test.csv")
 json_path = os.path.join(base_dir, "..", "data", filename)
 
 json_path = os.path.abspath(json_path)
@@ -41,7 +41,10 @@ def extract_unique_songs_json(json_path: str):
         for track in tracks:
             if isinstance(track, list) and len(track) == 2:
                 title, artist = track
-                unique_songs.add((title, artist))
+                # Artists in JSON are now in the form "'A';'B'" or "'Earth, Wind & Fire'"
+                # Keep the raw string; downstream splitting handles ';' and quotes.
+                if isinstance(artist, str):
+                    unique_songs.add((title, artist))
 
     return unique_songs
 
@@ -69,9 +72,8 @@ def extract_songs_from_csv(csv_path: str):
                 print(title, artist_field)
                 continue
 
-            # Split multiple artists by semicolon, normalize whitespace
-            artists = [a.strip() for a in artist_field.split(";")]
-            artist_string = ",".join(artists)
+            # Preserve artist field EXACTLY as provided (no spacing or punctuation changes)
+            artist_string = artist_field
 
             record = (title, artist_string)
 
@@ -424,6 +426,7 @@ def match_songs_cascaded(library, database, threshold_title=85, threshold_artist
                 best["title_score"],
             )
         else:
+            # Save song to unmatched list
             if DEBUG:
                 print(
                     f"[Stage 4] NO MATCH FOUND for {lib_item['title']} / {lib_item['artists_raw']}"
@@ -448,9 +451,7 @@ if __name__ == "__main__":
     matched_path = os.path.join(base_dir, "..", "data", "matched_songs.csv")
     print("Matched tracks:", len(matches))
 
-    def to_semicolon_artists(s: str) -> str:
-        parts = [a.strip() for a in s.split(",") if a.strip()]
-        return "; ".join(parts)
+    # Semicolon conversion is no longer needed; preserve original separators.
 
     with open(matched_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -478,7 +479,7 @@ if __name__ == "__main__":
             writer.writerow(
                 [
                     lib_title,
-                    to_semicolon_artists(lib_artists_raw),
+                    lib_artists_raw,
                     db_title,
                     db_artists_raw,
                     artist_score,
@@ -493,7 +494,4 @@ if __name__ == "__main__":
         writer = csv.writer(f)
         writer.writerow(["library_title", "library_artist"])
         for title, artist in unmatched:
-            writer.writerow([title, to_semicolon_artists(artist)])
-
-    # print(f"Exported unmatched songs to: {unmatched_path}")
-    # print(f"Exported matched songs to: {matched_path}")
+            writer.writerow([title, artist])

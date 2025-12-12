@@ -1,8 +1,8 @@
 import os, json, csv
 
 base_dir = os.path.dirname(__file__)  # .../SpotifyPlaylistSplitter/PlaylistSplitter
-filename = "spotify_playlists_data_1.json"
-filename = "spotify_playlists_data_backup_2025_12_10.json"
+filename = "spotify_playlists_data_1_converted.json"
+filename = "spotify_playlists_data_backup_2025_12_10_converted.json"
 library_path = os.path.join(base_dir, "..", "data", "library.csv")
 unmatched_path = os.path.join(base_dir, "..", "data", "unmatched_songs.csv")
 matched_path = os.path.join(base_dir, "..", "data", "matched_songs.csv")
@@ -22,7 +22,7 @@ def filter_database_by_matched_songs(json_path: str, matched_songs: set):
             "playlist_name": "...",
             "user_id": "...",
             "tracks": [
-                ["Track Name", "Artist Name"],
+                ["Track Name", "'Artist1';'Artist2'"],  # Artists in quoted semicolon format
                 ...
             ]
         },
@@ -78,6 +78,8 @@ def extract_matched_songs(csv_path: str):
 
     Expected CSV structure:
     library_title,library_artist,database_title,database_artist,artist_score,title_score
+
+    Note: database_artist is in the format "'Artist1';'Artist2'" (quoted semicolon-separated).
 
     Returns a set of (database_title, database_artist) tuples.
     """
