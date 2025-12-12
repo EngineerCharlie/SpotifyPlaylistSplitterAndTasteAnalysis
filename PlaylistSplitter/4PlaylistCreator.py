@@ -15,9 +15,10 @@ output_dir = os.path.join(base_dir, "..", "playlists")
 def load_matched_songs_mapping(csv_path: str):
     """
     Load the mapping from database songs to library songs.
-    Returns dict: (database_title, database_artist) -> (library_title, library_artist)
+    Returns dict: (database_title, database_artist) -> list of (library_title, library_artist)
+    Note: A single database track may map to multiple library tracks.
     """
-    mapping = {}
+    mapping = defaultdict(list)
 
     with open(csv_path, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -28,7 +29,7 @@ def load_matched_songs_mapping(csv_path: str):
             lib_artist = row.get("library_artist", "").strip()
 
             if db_title and db_artist and lib_title and lib_artist:
-                mapping[(db_title, db_artist)] = (lib_title, lib_artist)
+                mapping[(db_title, db_artist)].append((lib_title, lib_artist))
 
     return mapping
 
@@ -184,11 +185,17 @@ def main():
         file_paths = []
 
         for db_title, db_artist in songs:
-            # Map database song to library song
-            lib_key = db_to_lib_mapping.get((db_title, db_artist))
+            # Map database song to library songs (may be multiple)
+            lib_keys = db_to_lib_mapping.get((db_title, db_artist), [])
 
-            if lib_key and lib_key in library:
-                file_paths.append(library[lib_key])
+            if lib_keys:
+                for lib_key in lib_keys:
+                    if lib_key in library:
+                        file_paths.append(library[lib_key])
+                    else:
+                        songs_not_found.append(
+                            (lib_key[0], lib_key[1], "cluster", cluster_id)
+                        )
             else:
                 songs_not_found.append((db_title, db_artist, "cluster", cluster_id))
 
@@ -199,24 +206,30 @@ def main():
             total_tracks_in_playlists += len(file_paths)
 
     # Create playlist for isolated songs
-    if isolated_songs:
+    if isolated_songs or unmatched_songs:
         print("\nCreating isolated songs playlist...")
         file_paths = []
 
         for db_title, db_artist in isolated_songs:
-            lib_key = db_to_lib_mapping.get((db_title, db_artist))
+            # Map database song to library songs (may be multiple)
+            lib_keys = db_to_lib_mapping.get((db_title, db_artist), [])
 
-            if lib_key and lib_key in library:
-                file_paths.append(library[lib_key])
-            else:
+            if lib_keys:
+                for lib_key in lib_keys:
+                    if lib_key in library:
+                        file_paths.append(library[lib_key])
+                    else:
+                        songs_not_found.append(
+                            (lib_key[0], lib_key[1], "isolated", "N/A")
+                        )
                 songs_not_found.append((db_title, db_artist, "isolated", "N/A"))
-        
+
         for lib_title, lib_artist in unmatched_songs:
             if (lib_title, lib_artist) in library:
                 file_paths.append(library[(lib_title, lib_artist)])
             else:
                 songs_not_found.append((lib_title, lib_artist, "unmatched", "N/A"))
-        
+
         if file_paths:
             playlist_path = os.path.join(output_dir, "isolated_songs.m3u")
             create_m3u_playlist(file_paths, playlist_path, "Isolated Songs")

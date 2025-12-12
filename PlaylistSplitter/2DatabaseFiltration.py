@@ -85,6 +85,7 @@ def extract_matched_songs(csv_path: str):
     """
 
     unique_songs = set()
+    duplicates = []
 
     with open(csv_path, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -94,7 +95,16 @@ def extract_matched_songs(csv_path: str):
             database_artist = row.get("database_artist", "").strip()
 
             if database_title and database_artist:
-                unique_songs.add((database_title, database_artist))
+                key = (database_title, database_artist)
+                if key in unique_songs:
+                    duplicates.append(key)
+                unique_songs.add(key)
+
+    if duplicates:
+        print("Non-unique songs detected in matched_songs.csv:")
+        for title, artist in duplicates:
+            print(f"  {title} - {artist}")
+        print(f"Total duplicates: {len(duplicates)}")
 
     return unique_songs
 
