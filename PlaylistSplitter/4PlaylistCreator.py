@@ -12,6 +12,9 @@ except ImportError:
 base_dir = os.path.dirname(__file__)
 data_dir = os.path.join(base_dir, "..", "data")
 music_dir = os.path.join(os.path.expanduser("~"), "Music")
+playlist_target_dir = os.path.join(
+    music_dir, "_Playlists"
+)  # Where playlists will ultimately be placed
 clusters_path = os.path.join(data_dir, "song_clusters.csv")
 isolated_path = os.path.join(data_dir, "isolated_songs.csv")
 matched_path = os.path.join(data_dir, "matched_songs.csv")
@@ -297,7 +300,7 @@ def load_unmatched_songs(csv_path: str):
     return unmatched
 
 
-def create_m3u_playlist(tracks, output_path, playlist_name):
+def create_m3u_playlist(tracks, output_path, playlist_name, target_playlist_dir):
     """
     Create an .m3u playlist file with EXTINF metadata.
 
@@ -305,6 +308,7 @@ def create_m3u_playlist(tracks, output_path, playlist_name):
         tracks: list of tuples (title, artist, duration, file_path)
         output_path: path to save the .m3u file
         playlist_name: name of the playlist
+        target_playlist_dir: directory where playlist will ultimately be placed (for relative paths)
     """
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("#EXTM3U\n")
@@ -312,8 +316,8 @@ def create_m3u_playlist(tracks, output_path, playlist_name):
         f.write(f"#PLAYLIST:{playlist_name}\n")
 
         for title, artist, duration, file_path in tracks:
-            # Convert absolute path to relative path
-            rel_path = os.path.relpath(file_path, os.path.dirname(output_path))
+            # Convert absolute path to relative path from target playlist directory
+            rel_path = os.path.relpath(file_path, target_playlist_dir)
             # Normalize path separators for m3u format
             rel_path = rel_path.replace("\\", "/")
 
@@ -403,7 +407,9 @@ def main():
 
         if tracks:
             playlist_path = os.path.join(output_dir, f"cluster_{cluster_id}.m3u")
-            create_m3u_playlist(tracks, playlist_path, f"Cluster {cluster_id}")
+            create_m3u_playlist(
+                tracks, playlist_path, f"Cluster {cluster_id}", playlist_target_dir
+            )
             total_playlists += 1
             total_tracks_in_playlists += len(tracks)
 
@@ -445,7 +451,9 @@ def main():
 
         if tracks:
             playlist_path = os.path.join(output_dir, "isolated_songs.m3u")
-            create_m3u_playlist(tracks, playlist_path, "Isolated Songs")
+            create_m3u_playlist(
+                tracks, playlist_path, "Isolated Songs", playlist_target_dir
+            )
             total_playlists += 1
             total_tracks_in_playlists += len(tracks)
 
